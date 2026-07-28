@@ -1,0 +1,45 @@
+:root {
+  --color-ink: #1c1917;
+  --color-ink-muted: #57534e;
+  --color-paper: #f7f4ef;
+  --color-panel: #ebe4d8;
+  --color-accent: #0f766e;
+  --color-accent-soft: #ccfbf1;
+  --color-line: #d6d0c4;
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --sidebar-width: 15rem;
+  --space: 1.25rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #d8efe8 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #e7dfd0 0%, transparent 50%),
+    var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+}

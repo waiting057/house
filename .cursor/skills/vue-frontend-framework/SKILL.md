@@ -215,7 +215,6 @@ export interface RouterModel {
 
 - 合併各模組 `RouterModel[]`
 - `createWebHistory(import.meta.env.BASE_URL)`（Pages 子路徑必填 `VITE_BASE_PATH`）
-- 興趣專案預設不需登入守衛
 
 ## Pinia
 

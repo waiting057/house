@@ -11,7 +11,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,vue,js}\"",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "data:real-price-registration": "node ./scripts/real-price-registration/build-taipei-data.mjs"
   },
   "dependencies": {
     "pinia": "^3.0.4",

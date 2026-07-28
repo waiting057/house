@@ -10,7 +10,7 @@ description: >-
 
 # Vue Frontend Framework
 
-自足規格：依本 skill 產生可建置並部署到 **GitHub Pages** 的前端框架。環境只維護 `.env.local`。資料來自靜態檔（見 `real-price-registration-data`），不依賴常駐後端 API envelope。
+自足規格：依本 skill 產生可建置並部署到 **GitHub Pages** 的前端框架。資料來自靜態檔（見 `real-price-registration-data`），不依賴常駐後端 API envelope。目標是未來只讀本 skill 與子 skill，就能從 0 產出目前專案的前端結果。
 
 ## When to use
 
@@ -20,8 +20,8 @@ description: >-
 
 ## Scaffold checklist
 
-1. 根目錄：`package.json`、`vite.config.ts`、`tsconfig*.json`、`index.html`、ESLint／Prettier（可選）
-2. `environments/.env.local`（及 `.env.local.example`）
+1. 根目錄：`package.json`、`vite.config.ts`、`tsconfig*.json`、`index.html`、ESLint
+2. `environments/.env.local`、`.env.local.example`、`.env.production`
 3. `src/main.ts`、`src/app.vue`（含左側選單 layout）
 4. `public/data/` 佔位（實際資料由資料管線 skill 產出）
 5. `src/apis/` 或 `src/data/`：讀取靜態 JSON 的 thin service（見下方 Data loading）
@@ -58,12 +58,15 @@ description: >-
 }
 ```
 
-依賴（骨架）：`vue`、`vue-router`、`pinia`；可選 `axios`。dev：`vite`、`@vitejs/plugin-vue`、`typescript`、`vue-tsc`、`@types/node`。圖表等業務套件有需求再加。
+依賴（骨架）：`vue`、`vue-router`、`pinia`；可選 `axios`。dev：`vite`、`@vitejs/plugin-vue`、`typescript`、`vue-tsc`、`@types/node`、`eslint`、`@typescript-eslint/*`、`eslint-plugin-vue`、`vue-eslint-parser`。圖表以自製 SVG 元件優先，不預設引入第三方圖表套件。
 
 ## Environment
 
 - Vite `envDir`：`environments/`
-- 只維護 **`environments/.env.local`**
+- 本機與正式建置分開：
+  - `environments/.env.local`
+  - `environments/.env.local.example`
+  - `environments/.env.production`
 
 | 變數 | 說明 |
 |------|------|
@@ -191,6 +194,49 @@ export class RealPriceRegistrationDataService {
 ```
 
 型別放同領域 `*.models.ts`，依實際 JSON 欄位定義即可。
+
+## Comment style
+
+程式註解必須是**完整、清楚、好理解**的維護型註解，不可只寫重述程式表面的廢話。
+
+### 原則
+
+1. **先說目的，再說原因**
+   - 優先解釋這段程式「為什麼存在」、「想保證什麼」。
+2. **描述資料流與判斷意圖**
+   - 對篩選、聚合、圖表座標、路徑組合、環境切換等邏輯，要讓下一位維護者能快速理解輸入、輸出、限制。
+3. **避免無效註解**
+   - 不要寫像「設定變數值」、「呼叫 API」這種從程式本身就看得懂的句子。
+4. **必要時用區塊註解**
+   - 複雜計算、資料正規化、圖表寬度策略、UI 響應式條件等，可以在程式區塊前用 1 到 3 行註解交代背景。
+5. **命名與註解要互相補充**
+   - 變數與函式名稱先清楚；註解再補充商業規則、例外狀況、為何這樣寫。
+
+### 建議寫法
+
+```ts
+// 使用 BASE_URL 組 public/data 路徑，確保 GitHub Pages 子路徑部署時仍能正確載入靜態 JSON。
+const response = await fetch(`${base}data/real-price-registration/manifest.json`)
+
+// 當資料點很多時，圖表本體需要比可視區更寬，才能把橫向捲動限制在圖表區域內，而不是撐開整頁。
+const width = computed(() => Math.max(720, props.points.length * 90))
+```
+
+### 不可接受的寫法
+
+```ts
+// 取得資料
+const response = await fetch(url)
+
+// 設定寬度
+const width = 720
+```
+
+## Implementation rules
+
+- Vue 頁面、service、圖表元件、資料正規化程式都要遵守上面的註解規範
+- 只要邏輯不是一眼就懂，就應補上讓維護者能直接接手的註解
+- 註解語氣以陳述句為主，避免口語化或只寫片段關鍵字
 
 ## Router
 

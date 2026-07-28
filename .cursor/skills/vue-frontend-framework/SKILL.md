@@ -242,6 +242,31 @@ npm run lint
 npm run type-check
 ```
 
+## GitHub Pages
+
+目標網址（repo `waiting057/house`）：`https://waiting057.github.io/house/`
+
+### Repo 設定
+
+1. **Settings → Pages → Build and deployment → Source**：選 **GitHub Actions**（不要用 Deploy from a branch + root）
+2. 將含 workflow 的變更 push 到 `main`，或於 Actions 手動跑 **Deploy GitHub Pages**
+
+### Workflow
+
+- 檔案：`.github/workflows/deploy-pages.yml`
+- 觸發：`push` 到 `main`、`workflow_dispatch`
+- 建置前寫入／使用 `environments/.env.production`（`VITE_BASE_PATH=/house/`）
+- `npm ci` → `npm run build` → 複製 `dist/index.html` 為 `dist/404.html`（history mode SPA 後備）→ 部署 `dist`
+
+### 環境變數
+
+| 檔案 | 用途 |
+|------|------|
+| `environments/.env.local` | 本機（`VITE_BASE_PATH=/`，勿提交） |
+| `environments/.env.production` | Pages／正式建置（`VITE_BASE_PATH=/house/`） |
+
+若 GitHub 帳號或 repo 名稱變更，同步改 `VITE_BASE_PATH`（`/<repo>/`）與 workflow／本節網址說明。
+
 ## Relation to other skills
 
 | Skill | 用途 |

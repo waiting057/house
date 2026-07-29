@@ -23,8 +23,8 @@ description: >-
 1. 根目錄：`package.json`、`vite.config.ts`、`tsconfig*.json`、`index.html`、ESLint
 2. `environments/.env.local`、`.env.local.example`、`.env.production`
 3. `src/main.ts`、`src/app.vue`（含左側選單 layout）
-4. `public/data/` 佔位（實際資料由資料管線 skill 產出）
-5. `src/apis/` 或 `src/data/`：讀取靜態 JSON 的 thin service（見下方 Data loading）
+4. `public/data/` 佔位（實價登錄等靜態檔見對應 data skill；無 Open Data 自動化）
+5. `src/apis/` 或 `src/data/`：讀取靜態 JSON／處理上傳的 thin service（見下方 Data loading）
 6. `src/routers/`：`router.models.ts`、`index.ts`、home／各功能路由
 7. `src/stores/`：至少 `useAppStore`（loading 等）
 8. `src/components/layout/`：固定左側選單；`common/` 可極簡
@@ -110,7 +110,7 @@ export default defineConfig(({ mode }) => {
 ```
 ├── environments/
 ├── public/
-│   └── data/                  # 靜態資料（由資料管線寫入）
+│   └── data/                  # 靜態資料（本地檔／手動更新，無自動管線）
 ├── src/
 │   ├── apis/                  # 或 data/：讀取 public/data 的 service
 │   │   └── <domain>/
@@ -177,16 +177,16 @@ app.mount('#app')
 
 1. 靜態檔放在 `public/data/...`（建置後以 `import.meta.env.BASE_URL` 組路徑）
 2. 領域 service 負責 `fetch`／Axios GET JSON、基本錯誤處理、回傳 typed 資料
-3. 資料 schema 以各資料管線 skill 為準（實價登錄見 `real-price-registration-data`）
+3. 資料 schema 以各資料 skill 為準（實價登錄見 `real-price-registration-data`：本地 CSV／JSON + 使用者上傳，來源為 [lvr.land.moi.gov.tw](https://lvr.land.moi.gov.tw/)，無 Open Data 自動化）
 
 ### 範例
 
 ```ts
 // apis/real-price-registration/realPriceRegistration.service.ts
 export class RealPriceRegistrationDataService {
-  static async loadMonthlySummary(): Promise<MonthlySummary[]> {
+  static async loadLocalTransactions(): Promise<RealPriceTransaction[]> {
     const base = import.meta.env.BASE_URL
-    const res = await fetch(`${base}data/real-price-registration/monthly-summary.json`)
+    const res = await fetch(`${base}data/real-price-registration/transactions.json`)
     if (!res.ok) throw new Error(`Failed to load data: ${res.status}`)
     return res.json()
   }
@@ -195,28 +195,72 @@ export class RealPriceRegistrationDataService {
 
 型別放同領域 `*.models.ts`，依實際 JSON 欄位定義即可。
 
-## Comment style
+## Comment style（程式碼規範）
 
-程式註解必須是**完整、清楚、好理解**的維護型註解，不可只寫重述程式表面的廢話。
+程式註解必須是**完整、清楚、好理解**的維護型註解，目的是讓人可以快速閱讀並理解程式邏輯。不可只寫重述程式表面的廢話。
 
 ### 原則
 
-1. **先說目的，再說原因**
+1. **先說目的，再說規則／原因**
    - 優先解釋這段程式「為什麼存在」、「想保證什麼」。
 2. **描述資料流與判斷意圖**
    - 對篩選、聚合、圖表座標、路徑組合、環境切換等邏輯，要讓下一位維護者能快速理解輸入、輸出、限制。
 3. **避免無效註解**
    - 不要寫像「設定變數值」、「呼叫 API」這種從程式本身就看得懂的句子。
-4. **必要時用區塊註解**
-   - 複雜計算、資料正規化、圖表寬度策略、UI 響應式條件等，可以在程式區塊前用 1 到 3 行註解交代背景。
-5. **命名與註解要互相補充**
+4. **公開型別與函式用 JSDoc**
+   - `interface`／`type`、匯出函式、含分支規則的內部函式，都要用完整 JSDoc（見下方範例）。
+5. **複雜邏輯可再加行內／區塊註解**
+   - 複雜計算、資料正規化、圖表寬度策略、UI 響應式條件等，在關鍵步驟旁補 1 到 3 行說明。
+6. **命名與註解要互相補充**
    - 變數與函式名稱先清楚；註解再補充商業規則、例外狀況、為何這樣寫。
 
-### 建議寫法
+### Interface／Type（必寫）
+
+每個 `interface`／重要 `type` 都要有 `@description`，並用 `@property` 說明每個欄位含義。
+
+```ts
+/**
+ * @description 變更密碼表單資料
+ * @property {string} currentPwd 目前密碼
+ * @property {string} newPwd 新密碼
+ * @property {string} confirmPwd 確認新密碼
+ */
+export interface ChangePwdForm {
+  currentPwd: string
+  newPwd: string
+  confirmPwd: string
+}
+```
+
+### Function（必寫）
+
+函式註解以 `@description` 說明「這支函式在做什麼」；若有非直覺規則、邊界條件或演算法，寫在 description 底下用條列交代，讓人不看實作也能理解邏輯。
+
+```ts
+/**
+ * @description 產生分頁列要渲染的項目（頁碼按鈕 + 省略號）
+ *
+ * 規則：
+ * 1. 總頁數 ≤ 7：全部頁碼都顯示（1, 2, 3, …, totalPages）
+ * 2. 總頁數 > 7：只顯示「首尾頁 + 目前頁及其前後一頁」，中間缺口用 … 表示
+ *    例如目前在第 5 頁、共 20 頁 → 1 … 4 5 6 … 20
+ */
+function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
+  // ...
+}
+```
+
+可選補充（複雜函式建議加上）：
+
+- `@param`：參數語意不明顯時
+- `@returns`：回傳結構或特殊語意時
+- `@throws`：會拋出特定錯誤（例如 CSV 格式不符）時
+
+### 行內／區塊註解（建議寫法）
 
 ```ts
 // 使用 BASE_URL 組 public/data 路徑，確保 GitHub Pages 子路徑部署時仍能正確載入靜態 JSON。
-const response = await fetch(`${base}data/real-price-registration/manifest.json`)
+const response = await fetch(`${base}data/real-price-registration/transactions.json`)
 
 // 當資料點很多時，圖表本體需要比可視區更寬，才能把橫向捲動限制在圖表區域內，而不是撐開整頁。
 const width = computed(() => Math.max(720, props.points.length * 90))
@@ -230,13 +274,27 @@ const response = await fetch(url)
 
 // 設定寬度
 const width = 720
+
+/** 變更密碼表單 */
+export interface ChangePwdForm {
+  currentPwd: string
+  newPwd: string
+  confirmPwd: string
+}
+
+/** 建立分頁 */
+function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {}
 ```
 
-## Implementation rules
+（上列不可接受處：只寫空泛標題、未說明欄位、未交代分支規則。）
 
-- Vue 頁面、service、圖表元件、資料正規化程式都要遵守上面的註解規範
+### Implementation rules
+
+- Vue 頁面、models、service、圖表元件、資料正規化／CSV 解析程式都要遵守本節規範
+- 新增或修改的 `interface`／匯出函式時，同步補齊或更新 JSDoc
 - 只要邏輯不是一眼就懂，就應補上讓維護者能直接接手的註解
 - 註解語氣以陳述句為主，避免口語化或只寫片段關鍵字
+- 實價登錄分析頁／資料 skill 實作時，同樣套用本節，不另訂衝突規則
 
 ## Router
 
@@ -317,7 +375,7 @@ npm run type-check
 
 | Skill | 用途 |
 |-------|------|
-| `real-price-registration-data` | 政府實價登錄資料管線 → 寫入 `public/data/...` |
+| `real-price-registration-data` | 實價登錄本地 CSV／JSON 約定（手動更新，無自動化） |
 | `vue-frontend-framework/home` | 首頁 |
 | `vue-frontend-framework/real-price-registration` | 實價登錄分析頁 |
 | `spring-boot-skeleton` | 可選；**GitHub Pages 主路徑不需要** |

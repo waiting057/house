@@ -76,11 +76,11 @@ src/
 ## UI content（骨架文案方向）
 
 - 標題：專案名稱（來自 `VITE_APP_NAME` 或固定文案）
-- 說明：興趣專案；可瀏覽實價登錄相關分析（資料非即時，由 Open Data 管線更新）
+- 說明：興趣專案；可瀏覽實價登錄相關分析（資料來自使用者上傳或本地靜態檔，無自動更新）
 - 語氣簡潔，首屏不要堆統計數字或卡片牆
 
 ## Relation
 
 - 父框架：`vue-frontend-framework`
 - 分析頁：`vue-frontend-framework/real-price-registration`
-- 資料：首頁不直接依賴資料管線；側欄只做導航
+- 資料：首頁不直接依賴實價登錄靜態檔；側欄只做導航

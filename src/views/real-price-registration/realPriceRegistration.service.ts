@@ -7,7 +7,7 @@ import type {
 } from './realPriceRegistration.models'
 
 /**
- * @description 建立篩選條件的初始值（全部不限制；車位為「不限」）
+ * @description 建立篩選條件的初始值（全部不限制；車位／管理組織為「不限」）
  */
 export function createInitialFilters(): RealPriceFilters {
   return {
@@ -15,6 +15,7 @@ export function createInitialFilters(): RealPriceFilters {
     startTradeMonth: '',
     endTradeMonth: '',
     buildingTypes: [],
+    mainUses: [],
     selectedRoadNames: [],
     selectedRemarkExclusions: [],
     roadKeyword: '',
@@ -28,6 +29,7 @@ export function createInitialFilters(): RealPriceFilters {
     minUnitPrice: '',
     maxUnitPrice: '',
     parking: 'all',
+    management: 'all',
   }
 }
 
@@ -64,13 +66,22 @@ function inRange(value: number | null, minRaw: string, maxRaw: string) {
 }
 
 /**
+ * @description 把 CSV「主要用途」正規成篩選用標籤；空白視為「未提供」
+ */
+function normalizeMainUse(value: string) {
+  const trimmed = String(value || '').trim()
+  return trimmed || '未提供'
+}
+
+/**
  * @description 依目前篩選條件過濾交易列
  *
  * 規則：
- * 1. 行政區／建物型態／路名集合：有選才限制
+ * 1. 行政區／建物型態／主要用途／路名集合：有選才限制
  * 2. 成交年月以 tradeYearMonth 字串比較（YYYY-MM）
  * 3. 備註排除：備註包含任一已選排除字串即剔除
- * 4. 屋齡／面積／總價／單價走區間；車位依 yes／no／all
+ * 4. 屋齡／面積／總價／單價走區間
+ * 5. 有無車位、有無管理組織：yes／no／all（管理組織對應 CSV「有」「無」）
  */
 export function filterTransactions(transactions: RealPriceTransaction[], filters: RealPriceFilters) {
   return transactions.filter((row) => {
@@ -78,6 +89,12 @@ export function filterTransactions(transactions: RealPriceTransaction[], filters
     if (filters.startTradeMonth && row.tradeYearMonth < filters.startTradeMonth) return false
     if (filters.endTradeMonth && row.tradeYearMonth > filters.endTradeMonth) return false
     if (filters.buildingTypes.length > 0 && !filters.buildingTypes.includes(row.buildingType)) return false
+    if (
+      filters.mainUses.length > 0 &&
+      !filters.mainUses.includes(normalizeMainUse(row.mainUse))
+    ) {
+      return false
+    }
     if (filters.selectedRoadNames.length > 0 && !filters.selectedRoadNames.includes(row.roadName || '')) return false
     if (
       filters.selectedRemarkExclusions.length > 0 &&
@@ -93,6 +110,9 @@ export function filterTransactions(transactions: RealPriceTransaction[], filters
 
     if (filters.parking === 'yes' && !row.hasParking) return false
     if (filters.parking === 'no' && row.hasParking) return false
+
+    if (filters.management === 'yes' && row.hasManagement !== '有') return false
+    if (filters.management === 'no' && row.hasManagement !== '無') return false
 
     return true
   })

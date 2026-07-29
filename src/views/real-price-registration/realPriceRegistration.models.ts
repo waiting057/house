@@ -78,12 +78,14 @@ export interface RealPriceTransaction extends RealPriceCsvRow {
  * @description 篩選下拉／候選集合的選項來源（由目前 active 交易資料重建）
  * @property {string[]} districts 行政區清單
  * @property {string[]} buildingTypes 建物型態清單
+ * @property {string[]} mainUses 主要用途清單
  * @property {string[]} roadNames 路名清單
  * @property {string[]} remarkValues 備註完整字串清單
  */
 export interface FilterOptionsPayload {
   districts: string[]
   buildingTypes: string[]
+  mainUses: string[]
   roadNames: string[]
   remarkValues: string[]
 }
@@ -94,6 +96,7 @@ export interface FilterOptionsPayload {
  * @property {string} startTradeMonth 成交年月起（YYYY-MM）
  * @property {string} endTradeMonth 成交年月迄（YYYY-MM）
  * @property {string[]} buildingTypes 已選建物型態（多選；空＝不限）
+ * @property {string[]} mainUses 已選主要用途（多選；空＝不限）
  * @property {string[]} selectedRoadNames 已選路名集合（有值時只保留符合者）
  * @property {string[]} selectedRemarkExclusions 備註排除集合（備註包含任一字串則剔除）
  * @property {string} roadKeyword 路名搜尋關鍵字（用來產生候選，不直接過濾清單）
@@ -106,13 +109,15 @@ export interface FilterOptionsPayload {
  * @property {string} maxTotalPrice 總價（萬元）上限
  * @property {string} minUnitPrice 單價（萬元/坪）下限
  * @property {string} maxUnitPrice 單價（萬元/坪）上限
- * @property {'all' | 'yes' | 'no'} parking 車位：不限／有／無
+ * @property {'all' | 'yes' | 'no'} parking 有無車位：不限／有／無
+ * @property {'all' | 'yes' | 'no'} management 有無管理組織：不限／有／無（對應 CSV「有」「無」）
  */
 export interface RealPriceFilters {
   district: string
   startTradeMonth: string
   endTradeMonth: string
   buildingTypes: string[]
+  mainUses: string[]
   selectedRoadNames: string[]
   selectedRemarkExclusions: string[]
   roadKeyword: string
@@ -126,6 +131,7 @@ export interface RealPriceFilters {
   minUnitPrice: string
   maxUnitPrice: string
   parking: 'all' | 'yes' | 'no'
+  management: 'all' | 'yes' | 'no'
 }
 
 /**

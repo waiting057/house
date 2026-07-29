@@ -270,7 +270,7 @@ export function parseCsvText(csvText: string): RealPriceTransaction[] {
 }
 
 /**
- * @description 從目前交易資料重建篩選候選（行政區、型態、路名、備註），並以繁中排序
+ * @description 從目前交易資料重建篩選候選（行政區、型態、主要用途、路名、備註），並以繁中排序
  */
 export function buildFilterOptionsFromTransactions(
   transactions: RealPriceTransaction[],
@@ -283,6 +283,12 @@ export function buildFilterOptionsFromTransactions(
   return {
     districts: unique(transactions.map((row) => row.district)),
     buildingTypes: unique(transactions.map((row) => row.buildingType)),
+    mainUses: unique(
+      transactions.map((row) => {
+        const trimmed = String(row.mainUse || '').trim()
+        return trimmed || '未提供'
+      }),
+    ),
     roadNames: unique(transactions.map((row) => row.roadName)),
     remarkValues: unique(transactions.map((row) => row.remark)),
   }

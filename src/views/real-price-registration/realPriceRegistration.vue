@@ -32,6 +32,7 @@ const filters = reactive<RealPriceFilters>(createInitialFilters())
 const filterOptions = ref<FilterOptionsPayload>({
   districts: [],
   buildingTypes: [],
+  mainUses: [],
   roadNames: [],
   remarkValues: [],
 })
@@ -491,6 +492,25 @@ onMounted(() => {
           </div>
         </div>
 
+        <div class="field field--full">
+          <span class="field__label">主要用途</span>
+          <p class="field__hint">
+            可多選，再次點擊同一項即可取消。
+          </p>
+          <div class="option-chips">
+            <button
+              v-for="use in filterOptions.mainUses"
+              :key="use"
+              type="button"
+              class="option-chip"
+              :class="{ 'option-chip--active': filters.mainUses.includes(use) }"
+              @click="toggleSelectedItem(filters.mainUses, use)"
+            >
+              {{ use }}
+            </button>
+          </div>
+        </div>
+
         <label class="field">
           <span class="field__label">屋齡區間</span>
           <div class="range">
@@ -568,7 +588,7 @@ onMounted(() => {
         </label>
 
         <label class="field">
-          <span class="field__label">是否有車位</span>
+          <span class="field__label">有無車位</span>
           <select
             v-model="filters.parking"
             class="field__control"
@@ -581,6 +601,24 @@ onMounted(() => {
             </option>
             <option value="no">
               無車位
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field__label">有無管理組織</span>
+          <select
+            v-model="filters.management"
+            class="field__control"
+          >
+            <option value="all">
+              不限
+            </option>
+            <option value="yes">
+              有管理組織
+            </option>
+            <option value="no">
+              無管理組織
             </option>
           </select>
         </label>
@@ -681,37 +719,39 @@ onMounted(() => {
             placeholder="例如：親友、關係人、車位、增建"
           >
 
-          <div class="candidate-list">
-            <label
-              v-for="candidate in remarkCandidates"
-              :key="candidate.value"
-              class="candidate-list__item"
-            >
-              <input
-                :checked="pendingRemarkSelections.includes(candidate.value)"
-                type="checkbox"
-                @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
+          <div class="search-block__scroll">
+            <div class="candidate-list">
+              <label
+                v-for="candidate in remarkCandidates"
+                :key="candidate.value"
+                class="candidate-list__item"
               >
-              <span>{{ candidate.value }}</span>
-            </label>
-            <p
-              v-if="filters.remarkKeyword && remarkCandidates.length === 0"
-              class="candidate-list__empty"
-            >
-              沒有符合的備註候選值。
-            </p>
-          </div>
+                <input
+                  :checked="pendingRemarkSelections.includes(candidate.value)"
+                  type="checkbox"
+                  @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
+                >
+                <span>{{ candidate.value }}</span>
+              </label>
+              <p
+                v-if="filters.remarkKeyword && remarkCandidates.length === 0"
+                class="candidate-list__empty"
+              >
+                沒有符合的備註候選值。
+              </p>
+            </div>
 
-          <div class="chips">
-            <button
-              v-for="remark in filters.selectedRemarkExclusions"
-              :key="remark"
-              type="button"
-              class="chip chip--muted"
-              @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
-            >
-              {{ remark }} ×
-            </button>
+            <div class="chips">
+              <button
+                v-for="remark in filters.selectedRemarkExclusions"
+                :key="remark"
+                type="button"
+                class="chip chip--muted"
+                @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
+              >
+                {{ remark }} ×
+              </button>
+            </div>
           </div>
           </section>
         </div>
@@ -1367,6 +1407,28 @@ onMounted(() => {
   margin-top: 0.75rem;
   padding: 0.2rem 0.1rem 0.2rem 0;
   overflow: auto;
+}
+
+/* 備註排除：候選＋已選一併限制高度，過多時在區塊內捲動 */
+.search-block__scroll {
+  max-height: 18rem;
+  margin-top: 0.75rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.2rem;
+}
+
+.search-block__scroll .candidate-list {
+  max-height: none;
+  margin-top: 0;
+  overflow: visible;
+}
+
+.search-block__scroll .chips {
+  position: sticky;
+  bottom: 0;
+  padding-top: 0.65rem;
+  background: linear-gradient(180deg, transparent, rgba(247, 244, 239, 0.95) 28%);
 }
 
 .candidate-list__item {

@@ -1,29 +1,23 @@
-import type {
-  FilterOptionsPayload,
-  RealPriceManifest,
-  RealPriceTransaction,
-} from '@/views/real-price-registration/realPriceRegistration.models'
+import {
+  LOCAL_CSV_FILENAME,
+  parseCsvText,
+} from '@/views/real-price-registration/realPriceRegistrationCsv.service'
+import type { RealPriceTransaction } from '@/views/real-price-registration/realPriceRegistration.models'
 
 const basePath = import.meta.env.BASE_URL
 
-async function loadJson<T>(relativePath: string): Promise<T> {
-  const response = await fetch(`${basePath}data/real-price-registration/${relativePath}`)
-  if (!response.ok) {
-    throw new Error(`Failed to load ${relativePath}: ${response.status}`)
-  }
-  return response.json() as Promise<T>
-}
-
+/** 預設分析資料：本地士林區 CSV（頁面主路徑） */
 export class RealPriceRegistrationDataService {
-  static loadManifest() {
-    return loadJson<RealPriceManifest>('manifest.json')
+  static getLocalCsvUrl() {
+    return `${basePath}data/real-price-registration/${encodeURIComponent(LOCAL_CSV_FILENAME)}`
   }
 
-  static loadTransactions() {
-    return loadJson<RealPriceTransaction[]>('transactions.json')
-  }
-
-  static loadFilterOptions() {
-    return loadJson<FilterOptionsPayload>('filter-options.json')
+  static async loadLocalCsv(): Promise<RealPriceTransaction[]> {
+    const response = await fetch(this.getLocalCsvUrl())
+    if (!response.ok) {
+      throw new Error(`Failed to load ${LOCAL_CSV_FILENAME}: ${response.status}`)
+    }
+    const text = await response.text()
+    return parseCsvText(text)
   }
 }

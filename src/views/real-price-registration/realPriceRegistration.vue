@@ -7,7 +7,6 @@ import { RealPriceRegistrationDataService } from '@/apis/real-price-registration
 import type {
   FilterOptionsPayload,
   RealPriceFilters,
-  RealPriceManifest,
   RealPriceTransaction,
 } from './realPriceRegistration.models'
 import {
@@ -20,19 +19,30 @@ import {
   getRemarkCandidates,
   getRoadCandidates,
 } from './realPriceRegistration.service'
+import {
+  buildFilterOptionsFromTransactions,
+  LOCAL_CSV_FILENAME,
+  parseCsvText,
+  REQUIRED_HEADERS,
+} from './realPriceRegistrationCsv.service'
 
 const appStore = useAppStore()
 
 const filters = reactive<RealPriceFilters>(createInitialFilters())
-const manifest = ref<RealPriceManifest | null>(null)
 const filterOptions = ref<FilterOptionsPayload>({
   districts: [],
   buildingTypes: [],
   roadNames: [],
   remarkValues: [],
 })
-const transactions = ref<RealPriceTransaction[]>([])
+/** 本地預設 CSV 解析結果；上傳失敗時仍以此為準 */
+const localTransactions = ref<RealPriceTransaction[]>([])
+/** 目前分析用資料（本地或上傳成功後的資料） */
+const activeTransactions = ref<RealPriceTransaction[]>([])
+const activeSourceLabel = ref(LOCAL_CSV_FILENAME)
 const errorMessage = ref('')
+const showFormatErrorModal = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 const scatterMetric = ref<'unitPriceWanPerPing' | 'totalPriceWan'>('unitPriceWanPerPing')
 
 const pendingRoadSelections = ref<string[]>([])
@@ -48,14 +58,19 @@ const sectionStates = reactive({
   list: true,
 })
 
-const filteredTransactions = computed(() => filterTransactions(transactions.value, filters))
+const listColumns = REQUIRED_HEADERS.map((header) => ({
+  header,
+  key: header,
+}))
+
+const filteredTransactions = computed(() => filterTransactions(activeTransactions.value, filters))
 
 const roadCandidates = computed(() =>
-  getRoadCandidates(transactions.value, filters, filters.selectedRoadNames),
+  getRoadCandidates(activeTransactions.value, filters, filters.selectedRoadNames),
 )
 
 const remarkCandidates = computed(() =>
-  getRemarkCandidates(transactions.value, filters.remarkKeyword, filters.selectedRemarkExclusions),
+  getRemarkCandidates(activeTransactions.value, filters.remarkKeyword, filters.selectedRemarkExclusions),
 )
 
 const unitPriceSeries = computed(() => buildPriceSeries(filteredTransactions.value, 'unitPriceWanPerPing'))
@@ -66,6 +81,39 @@ const scatterPoints = computed(() => buildScatterPoints(filteredTransactions.val
 const sortedTransactions = computed(() =>
   [...filteredTransactions.value].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)),
 )
+
+function applyActiveDataset(next: RealPriceTransaction[], sourceLabel: string) {
+  activeTransactions.value = next
+  activeSourceLabel.value = sourceLabel
+  filterOptions.value = buildFilterOptionsFromTransactions(next)
+  resetFilters()
+}
+
+/** 清單欄位對應 CSV 原始字串，保持標題與來源檔一致 */
+function getCsvCellValue(row: RealPriceTransaction, header: string) {
+  const map: Record<string, string> = {
+    地段位置或門牌: row.address,
+    社區簡稱: row.communityName,
+    交易日期: row.tradeDateRaw,
+    '總價(萬元)': row.totalPriceWanRaw,
+    '單價(萬元/坪)': row.unitPriceWanPerPingRaw,
+    '總面積(坪)': row.buildingAreaPingRaw,
+    主建物佔比: row.mainBuildingRatio,
+    型態: row.buildingType,
+    屋齡: row.buildingAgeRaw,
+    '樓別/樓高': row.floorInfo,
+    交易標的: row.transactionTarget,
+    交易筆棟數: row.transactionUnits,
+    建物現況格局: row.layout,
+    '車位總價(萬元)': row.parkingPriceWanRaw,
+    管理組織: row.hasManagement,
+    電梯: row.hasElevator,
+    主要用途: row.mainUse,
+    備註: row.remark,
+  }
+  const value = map[header]
+  return value && value.trim() ? value : '—'
+}
 
 function calculateStats(values: Array<number | null>) {
   const numbers = values.filter((value): value is number => value != null).sort((a, b) => a - b)
@@ -169,19 +217,51 @@ async function loadData() {
   errorMessage.value = ''
   appStore.setLoading(true)
   try {
-    const [nextManifest, nextTransactions, nextFilterOptions] = await Promise.all([
-      RealPriceRegistrationDataService.loadManifest(),
-      RealPriceRegistrationDataService.loadTransactions(),
-      RealPriceRegistrationDataService.loadFilterOptions(),
-    ])
-    manifest.value = nextManifest
-    transactions.value = nextTransactions
-    filterOptions.value = nextFilterOptions
+    const nextTransactions = await RealPriceRegistrationDataService.loadLocalCsv()
+    localTransactions.value = nextTransactions
+    applyActiveDataset(nextTransactions, LOCAL_CSV_FILENAME)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '資料載入失敗'
   } finally {
     appStore.setLoading(false)
   }
+}
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+async function onCsvSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  try {
+    const text = await file.text()
+    const nextTransactions = parseCsvText(text)
+    applyActiveDataset(nextTransactions, file.name)
+  } catch {
+    showFormatErrorModal.value = true
+    // 格式不符時維持本地分析；若先前已切到上傳檔，則還原本地資料
+    if (activeSourceLabel.value !== LOCAL_CSV_FILENAME) {
+      applyActiveDataset(localTransactions.value, LOCAL_CSV_FILENAME)
+    }
+  }
+}
+
+function downloadLocalCsv() {
+  const link = document.createElement('a')
+  link.href = RealPriceRegistrationDataService.getLocalCsvUrl()
+  link.download = LOCAL_CSV_FILENAME
+  link.rel = 'noopener'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+function closeFormatErrorModal() {
+  showFormatErrorModal.value = false
 }
 
 onMounted(() => {
@@ -205,13 +285,36 @@ onMounted(() => {
       </div>
       <div class="page__meta">
         <p>
-          資料更新：
-          <strong>{{ manifest?.generatedAt ? manifest.generatedAt.slice(0, 10) : '—' }}</strong>
+          目前資料：
+          <strong>{{ activeSourceLabel }}</strong>
         </p>
         <p>
           筆數：
-          <strong>{{ manifest?.records?.transactions ?? 0 }}</strong>
+          <strong>{{ activeTransactions.length }}</strong>
         </p>
+        <div class="page__actions">
+          <input
+            ref="fileInputRef"
+            class="visually-hidden"
+            type="file"
+            accept=".csv,text/csv"
+            @change="onCsvSelected"
+          >
+          <button
+            type="button"
+            class="button"
+            @click="openFilePicker"
+          >
+            上傳 CSV
+          </button>
+          <button
+            type="button"
+            class="button button--ghost"
+            @click="downloadLocalCsv"
+          >
+            下載
+          </button>
+        </div>
       </div>
     </header>
 
@@ -896,16 +999,12 @@ onMounted(() => {
           <table class="table">
             <thead>
               <tr>
-                <th>成交日期</th>
-                <th>行政區</th>
-                <th>地址</th>
-                <th>類型</th>
-                <th>屋齡</th>
-                <th>總面積（坪）</th>
-                <th>總價（萬元）</th>
-                <th>單價（萬元/坪）</th>
-                <th>車位</th>
-                <th>備註</th>
+                <th
+                  v-for="column in listColumns"
+                  :key="column.key"
+                >
+                  {{ column.header }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -913,22 +1012,51 @@ onMounted(() => {
                 v-for="row in sortedTransactions"
                 :key="row.id"
               >
-                <td>{{ row.tradeDate }}</td>
-                <td>{{ row.district }}</td>
-                <td>{{ row.fullAddress }}</td>
-                <td>{{ row.buildingType }}</td>
-                <td>{{ formatNumber(row.buildingAgeYears, 1) }}</td>
-                <td>{{ formatNumber(row.buildingAreaPing, 2) }}</td>
-                <td>{{ formatNumber(row.totalPriceWan, 0) }}</td>
-                <td>{{ formatNumber(row.unitPriceWanPerPing, 2) }}</td>
-                <td>{{ row.hasParking ? '有' : '無' }}</td>
-                <td>{{ row.remark || '—' }}</td>
+                <td
+                  v-for="column in listColumns"
+                  :key="`${row.id}-${column.key}`"
+                >
+                  {{ getCsvCellValue(row, column.header) }}
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
     </section>
+
+    <div
+      v-if="showFormatErrorModal"
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="csv-format-error-title"
+    >
+      <button
+        type="button"
+        class="modal__backdrop"
+        aria-label="關閉不符合格式提示"
+        @click="closeFormatErrorModal"
+      />
+      <div class="modal__panel">
+        <h2
+          id="csv-format-error-title"
+          class="modal__title"
+        >
+          不符合格式
+        </h2>
+        <p class="modal__body">
+          請使用與本地預設檔相同標題的 CSV，分析將繼續使用本地資料。
+        </p>
+        <button
+          type="button"
+          class="button"
+          @click="closeFormatErrorModal"
+        >
+          關閉
+        </button>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -997,6 +1125,68 @@ onMounted(() => {
 .page__meta {
   min-width: 12rem;
   font-size: 0.94rem;
+}
+
+.page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(20, 24, 28, 0.45);
+  cursor: pointer;
+}
+
+.modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 22rem);
+  padding: 1.35rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.modal__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.modal__body {
+  margin: 0;
+  color: var(--color-ink-muted);
+  line-height: 1.6;
 }
 
 .panel__header,

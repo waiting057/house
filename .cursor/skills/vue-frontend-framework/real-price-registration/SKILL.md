@@ -3,21 +3,25 @@ name: real-price-registration-page
 description: >-
   Implements the real price registration (實價登錄) analysis page for the house
   Vue app. Use when building or changing views/real-price-registration, its
-  routes, filters, charts, summary blocks, or transaction list backed by static
-  JSON data.
+  routes, filters, charts, summary, CSV upload/download, or local JSON/CSV
+  default data. Source files come from 內政部實價查詢服務網 via user upload or
+  local static files — no Open Data automation.
 ---
 
 # Real Price Registration Page
 
 英文模組名：**`real-price-registration`**（實價登錄分析頁）。
 
-第一版以 **台北市、近幾年、買賣案件** 為範圍，部署於 GitHub Pages，資料由 `real-price-registration-data` 產出的靜態 JSON 提供。目標是只依本 skill 即可從 0 實作出目前分析頁的互動、版面與圖表結果。
+第一版以 **台北市買賣案件** 為範圍（預設檔可為士林區），部署於 GitHub Pages。  
+資料來自 [內政部不動產交易實價查詢服務網](https://lvr.land.moi.gov.tw/)：**使用者上傳 CSV**，或使用 repo 內**本地靜態檔**。沒有 Open Data 自動下載，也沒有排程更新。
+
+目標是只依本 skill 即可從 0 實作出目前分析頁的互動、版面與圖表結果。
 
 ## When to use
 
 - 建立或修改實價登錄分析頁
-- 接上 `public/data/real-price-registration/` 靜態資料
-- 調整篩選條件、圖表、清單排序與說明文案
+- 接上 `public/data/real-price-registration/` 本地預設資料
+- 調整篩選、圖表、清單、上傳／下載與說明文案
 
 ## Place in app
 
@@ -32,7 +36,8 @@ src/
 ├── views/real-price-registration/
 │   ├── realPriceRegistration.vue
 │   ├── realPriceRegistration.models.ts
-│   └── realPriceRegistration.service.ts
+│   ├── realPriceRegistration.service.ts
+│   └── realPriceRegistrationCsv.service.ts
 ├── apis/real-price-registration/
 │   └── realPriceRegistration.service.ts
 ├── components/common/charts/
@@ -42,35 +47,68 @@ src/
     └── realPriceRegistration.ts
 ```
 
+## Data flow（必守）
+
+```
+1. 讀取 CSV
+   - 有上傳 → 使用上傳的 CSV
+   - 無上傳 → 使用本地預設資料
+2. 解析成 JSON（RealPriceTransaction[]）
+   - 上傳：執行期 parse CSV
+   - 本地：優先直接載入事先轉好的 JSON（避免每次進頁都解析 CSV）
+3. 畫面呈現（篩選／摘要／圖表／清單）
+```
+
+對應狀態建議：
+
+- `localTransactions`：本地預設解析結果（進頁載入一次）
+- `activeTransactions`：目前分析用（本地或上傳成功後）
+
 ## Data dependency
 
-- 資料由 **`real-price-registration-data`** 管線寫入：
-  - `public/data/real-price-registration/manifest.json`
-  - `public/data/real-price-registration/transactions.json`
-  - `public/data/real-price-registration/monthly-summary.json`
-- `public/data/real-price-registration/filter-options.json`
-- 頁面只讀取同站靜態檔；勿在瀏覽器直接抓政府網站當主流程
+- 檔案來源說明：[lvr.land.moi.gov.tw](https://lvr.land.moi.gov.tw/)（人工匯出，非本專案自動抓取）
+- **本地預設（建議）**：`public/data/real-price-registration/transactions.json`（由 CSV 事先轉好）
+- **本地 CSV 樣板／下載**：`public/data/real-price-registration/士林區實價登錄.csv`
+- **上傳 CSV**：標題必須與契約一致（正規化後比對）；成功才改用上傳資料
+- **下載**：固定下載本地預設 CSV（不是上傳檔）
+- 格式不符：彈窗「不符合格式」，分析繼續用本地資料
+- **不做** Open Data／GitHub Actions 自動更新（細節見 `real-price-registration-data`）
 
-### 資料欄位（第一版）
+### CSV 標題契約（正規化後必須一致）
 
-- `district`：行政區
-- `roadName`：標準化路名
-- `fullAddress`：完整地址
-- `buildingType`：建物型態
-- `tradeDate` / `tradeYearMonth`
-- `buildingAreaPing`
-- `totalPriceWan`
-- `unitPriceWanPerPing`
-- `buildingAgeYears`
-- `hasParking`
-- `remark`
-- `parkingType`
+- `地段位置或門牌`
+- `社區簡稱`
+- `交易日期`
+- `總價(萬元)`
+- `單價(萬元/坪)`
+- `總面積(坪)`
+- `主建物佔比`
+- `型態`
+- `屋齡`
+- `樓別/樓高`
+- `交易標的`
+- `交易筆棟數`
+- `建物現況格局`
+- `車位總價(萬元)`
+- `管理組織`
+- `電梯`
+- `主要用途`
+- `備註`
 
-### 第一版資料範圍
+注意：原始檔部分欄位用引號包住並含換行（如 `"單價\n(萬元/坪)"`），驗證時先去掉換行與空白再比對。
 
-- 城市：台北市
-- 交易類型：買賣
-- 時間：近幾年（由管線輸出資料實際涵蓋年度為準）
+### 資料欄位（分析用衍生 + CSV 原始）
+
+- 原始 18 欄：供清單依 CSV 標題顯示
+- `district` / `roadName`：從 `地段位置或門牌` 解析
+- `tradeDate` / `tradeYearMonth`：由民國 `yyy/mm/dd` 轉西元
+- `buildingType` ← `型態`
+- `buildingAgeYears` ← `屋齡`
+- `buildingAreaPing` ← `總面積(坪)`
+- `totalPriceWan` ← `總價(萬元)`
+- `unitPriceWanPerPing` ← `單價(萬元/坪)`
+- `hasParking`：由交易筆棟數／交易標的／車位總價判斷
+- `remark` ← `備註`
 
 ## Filters
 
@@ -78,7 +116,7 @@ src/
 
 1. **行政區**：單選下拉
 2. **路名**：關鍵字搜尋候選值，可多次加入已選路名集合
-3. **建物型態**：多選
+3. **建物型態**：多選（可再點取消）
 4. **屋齡區間**
 5. **總面積（坪）區間**
 6. **總價（萬元）區間**
@@ -86,6 +124,8 @@ src/
 8. **是否有車位**：不限／有／無
 9. **備註排除**：關鍵字搜尋候選值，可多次加入排除集合
 10. **交易時間區間**：起訖月份（`YYYY-MM`）
+
+篩選／摘要／圖表都吃 `activeTransactions`。`filterOptions` 由目前 active 資料重建。
 
 ### 路名與備註互動
 
@@ -99,20 +139,12 @@ src/
 
 頁面採 **上圖下表**，且目前所有主要區塊都必須支援收合：
 
-1. 篩選區
-2. 統計摘要區
-   - 成交筆數
-   - 單價：平均 / 中位數 / 最高 / 最低
-   - 總價：平均 / 中位數 / 最高 / 最低
-3. 圖表區
-   - 單價走勢
-   - 總價走勢
-   - 成交量
-   - 成交點分布圖（單價 / 總價切換）
-4. 說明區
-   - 中位數較有參考價值的原因
-5. 清單區
-   - 預設按成交日期新到舊排序
+1. Hero：標題 + **上傳 CSV** / **下載**；顯示目前資料來源檔名與筆數
+2. 篩選區
+3. 統計摘要區
+4. 圖表區（單價／總價／成交量／散點）
+5. 說明區
+6. 清單區：欄位與 CSV 18 欄標題一致，依西元 `tradeDate` 新到舊排序
 
 ### 收合互動
 
@@ -122,100 +154,45 @@ src/
 
 ## Charts
 
-### 單價走勢
+### 單價走勢 / 總價走勢 / 成交量 / 散點
 
-- 主線：每月單價 **中位數**
-- 輔線：每月單價 **平均數**（虛線）
-- 每個折點需顯示對應數值
-- X 軸刻度與 X 軸名稱都使用完整 `YYYY-MM` / `成交年月`
-- Y 軸單位顯示在圖卡右上角
-
-### 總價走勢
-
-- 主線：每月總價 **中位數**
-- 輔線：每月總價 **平均數**（虛線）
-- 每個折點需顯示對應數值
-- X 軸刻度與 X 軸名稱都使用完整 `YYYY-MM` / `成交年月`
-- Y 軸單位顯示在圖卡右上角
-
-### 成交量
-
-- 每月成交筆數
-- X 軸刻度與 X 軸名稱都使用完整 `YYYY-MM` / `成交年月`
-- Y 軸單位顯示在圖卡右上角
-
-### 成交點分布圖
-
-- X 軸：成交日期
-- 每筆成交一個點
-- 需提供切換控制：
-  - `單價分布`
-  - `總價分布`
-- 顯示目前篩選後的**全部資料**，不另外縮成近 12 或 24 個月
-- 目的不是取代趨勢圖，而是補足單筆樣本分布與離群值觀察
-- X 軸名稱需明確標示（建議：`成交年月`）
-- Y 軸單位顯示在圖卡右上角
-
-### 圖表說明文案
-
-需在圖表下方明確說明：
-
-- 中位數較不容易受極端值影響
-- 在實價登錄資料中，特殊高價案、親屬交易、僅車位交易等都可能拉高或拉低平均數
-- 因此中位數較適合作為區域行情參考，平均數則作為輔助觀察
-
-## Chart rendering constraints
-
-- 每張圖都要有自己的獨立卡片與標題，不要把三張折線圖塞在同一個共用面板內
-- **只有圖表的繪圖區域可以左右滑動**
-  - 外層頁面、整張卡片、整個主內容區都不應因圖表而產生整頁橫向捲動
-  - 正確做法是：圖卡標題與說明固定，內層繪圖 viewport `overflow-x: auto`
-- 當資料點很多時，圖表本體寬度可大於可視區；以內層滾動容器承接，不可撐開整頁
-- 需考慮左側 sidebar 存在時的可用寬度，區塊排版與斷點要偏保守
+- 資料來源為 `activeTransactions` 衍生欄位
+- X 軸：`YYYY-MM` / `成交年月`；Y 軸單位在圖卡右上角
+- 只有繪圖區可左右滑；不可撐開整頁
 
 ## Result list
 
-清單欄位至少包含：
-
-- 成交日期
-- 行政區
-- 地址
-- 建物型態
-- 屋齡
-- 總面積（坪）
-- 總價（萬元）
-- 單價（萬元/坪）
-- 車位
-- 備註
-
-預設排序：**成交日期新到舊**
+清單表頭與儲存格必須對齊 CSV 的 18 欄標題與原始值顯示。預設排序：成交日期（西元）新到舊。
 
 ## UX constraints
 
-- 首次進頁可直接載入資料並顯示預設圖表
+- 首次進頁載入本地預設資料（優先 JSON）並顯示圖表
+- 上傳成功：切到上傳資料並重算 filterOptions
+- 上傳失敗／標題不符：彈窗「不符合格式」，分析維持本地
+- 下載永遠是本地預設 CSV
 - 若無符合條件資料，需明確顯示空狀態
-- 若資料載入失敗，需顯示錯誤訊息與可重試操作
-- 路名與備註候選值不應一次全部展開，需靠搜尋縮小範圍
-- 篩選欄位不應全部擠成單一長排；桌面版以 **1 到 2 欄** 為主，重點是易讀、不重疊
-- Hero、搜尋區塊、篩選區塊都要允許在較窄寬度下換行或降欄，避免被 sidebar 擠爆
+- 若本地資料載入失敗，需顯示錯誤訊息與可重試操作
+- 篩選欄位桌面版以 **1 到 2 欄** 為主
 
 ## Implementation hints
 
-- `realPriceRegistration.vue`
-  - 管理篩選條件、收合狀態、資料載入、摘要統計與圖表資料來源
-- `realPriceRegistration.models.ts`
-  - 定義 `RealPriceTransaction`、`RealPriceManifest`、`RealPriceFilters`、圖表資料型別
-- `realPriceRegistration.service.ts`
-  - 放篩選、聚合、格式化、候選值搜尋邏輯
-- `apis/real-price-registration/realPriceRegistration.service.ts`
-  - 專心處理靜態 JSON 載入
-- `lineChart.vue`
-  - 自製 SVG 折線圖，支援主線/輔線、數值標籤、右上 Y 軸單位、底部 X 軸名稱、內層橫向捲動 viewport
-- `scatterPlot.vue`
-  - 自製 SVG 散點圖，支援完整年月刻度、右上 Y 軸單位、底部 X 軸名稱、內層橫向捲動 viewport
+- `realPriceRegistration.vue`：`localTransactions` + `activeTransactions`、上傳／下載、格式不符 modal
+- `realPriceRegistrationCsv.service.ts`：標題契約、parse 上傳 CSV、`buildFilterOptionsFromTransactions`
+- `realPriceRegistration.service.ts`：篩選、聚合、格式化、候選值搜尋
+- `apis/.../realPriceRegistration.service.ts`：載入本地 `transactions.json`（或 fallback CSV）與本地 CSV 下載 URL
+- 上傳依賴：`papaparse`（處理引號多行表頭）
+- 本地 JSON 更新方式見 `real-price-registration-data`（手動轉換，無自動化）
+
+## Code comments
+
+註解規範以父 skill `vue-frontend-framework` 的 **Comment style（程式碼規範）** 為準：
+
+- `interface`／`type`：`@description` + 每個欄位 `@property`
+- function：`@description`；有分支／邊界規則時用條列寫清楚
+- 目的是讓人可不靠猜就能讀懂邏輯；禁止空泛一句話註解
 
 ## Relation
 
 - 父框架：`vue-frontend-framework`
 - 首頁／側欄：`vue-frontend-framework/home`
-- 資料管線：`real-price-registration-data`
+- 靜態資料約定：`real-price-registration-data`

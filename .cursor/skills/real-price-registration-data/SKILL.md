@@ -1,118 +1,177 @@
 ---
 name: real-price-registration-data
 description: >-
-  Builds the GitHub Actions / local pipeline that downloads Taiwan MOI real
-  price registration (實價登錄) open data, cleans it, and writes static JSON
-  under public/data/real-price-registration for the Vue GitHub Pages app. Use
-  when adding or changing 實價登錄 data ingest, schema, or scheduled updates.
-  Other open-data sources get their own skills later.
+  Documents how real price registration (實價登錄) static files are prepared for
+  the house Vue app: manual CSV from 內政部實價查詢服務網, local default files
+  under public/data/real-price-registration, and optional one-off CSV→JSON
+  conversion. No Open Data crawl and no scheduled automation. Use when adding
+  or changing local CSV/JSON assets, CSV header contract, or conversion scripts.
 ---
 
-# Real Price Registration Data Pipeline
+# Real Price Registration Data（本地靜態檔）
 
-英文資料夾名：**`real-price-registration`**（實價登錄資料）。負責從政府 Open Data 取得實價登錄批次資料，轉成前端可讀的靜態 JSON，供 GitHub Pages 使用。其他政府資料集日後另開 skill。
+英文資料夾名：**`real-price-registration`**（實價登錄資料）。
+
+本專案**不使用**政府 Open Data API／批次 ZIP 自動下載，也**沒有** GitHub Actions 排程更新。
+
+資料由使用者自行從官方查詢網取得 CSV，再放到 repo 本地或於分析頁上傳。
 
 ## When to use
 
-- 建立或修改實價登錄下載、清洗、聚合、輸出路徑
-- 調整 GitHub Actions 排程更新
-- 與分析頁約定 JSON schema 時
+- 新增／更新 `public/data/real-price-registration/` 底下的預設 CSV 或預先轉好的 JSON
+- 調整 CSV 標題契約或 CSV→JSON 轉換腳本（手動執行，非自動化）
+- 與分析頁約定靜態檔路徑與 JSON schema
+
+## Official source（人工下載）
+
+檔案來源：[內政部不動產交易實價查詢服務網](https://lvr.land.moi.gov.tw/)
+
+- 使用者在該網站查詢／匯出 CSV 後，自行上傳到分析頁，或替換 repo 內本地預設檔
+- **禁止**把 Open Data 批次下載、爬蟲、排程抓取當成本專案主流程
+- **禁止**假設有自動化管線會更新資料
+
+## Program data flow（與分析頁一致）
+
+```
+1. 讀取 CSV
+   - 有上傳 → 使用上傳的 CSV
+   - 無上傳 → 使用本地預設檔
+2. 解析成分析用 JSON（RealPriceTransaction[]）
+   - 上傳：執行期用 papaparse 解析
+   - 本地：可事先轉成 JSON，頁面直接 fetch JSON，避免每次解析 CSV
+3. 畫面呈現（篩選／圖表／清單）
+```
 
 ## Goal
 
 ```
-政府 Open Data（ZIP / CSV）
-  → 下載與解壓
-  → 清洗／篩選／聚合
-  → public/data/real-price-registration/*.json
-  → Vue 分析頁讀取（見 vue-frontend-framework/real-price-registration）
+https://lvr.land.moi.gov.tw/（人工匯出 CSV）
+  → 使用者上傳，或放入 public/data/real-price-registration/
+  →（可選）手動腳本 CSV → transactions.json
+  → Vue 分析頁讀取並呈現
 ```
 
-- **非即時**：跟隨官方發布節奏（約每月 1／11／21）
-- **自動化**：以 GitHub Actions 排程為主，開發者不必每次手動更新
-- **無外部資料庫**：只產出靜態檔
-
-## Official source
-
-- 內政部不動產成交案件實際資訊資料供應系統：<https://plvr.land.moi.gov.tw/DownloadOpenData>
-- 政府資料開放平臺相關資料集（CSV／XML 之 ZIP）
-- 優先使用 **CSV**（較 XML 易處理）；勿假設有穩定的即時 JSON API
-
-實作時應查閱當期下載頁與 schema 檔（如 `schema-main.csv` 等），欄位以官方為準。
+- **無自動化**：更新資料靠人工替換檔案或上傳
+- **無外部資料庫**：只使用靜態檔 + 瀏覽器內解析上傳檔
+- **興趣專案約束**：不爬查詢網、不繞過網站使用條款
 
 ## Output layout
 
 ```
 public/data/real-price-registration/
-├── manifest.json              # 資料版本、來源期別、產生時間、涵蓋範圍
-├── monthly-summary.json       # 依年月聚合：筆數、單價統計等（分析頁主資料）
-└── (optional) chunks/         # 若需明細，再分縣市或年月切檔
+├── 士林區實價登錄.csv         # 本地預設 CSV（來源樣板／下載用）
+└── transactions.json          # 建議：由上述 CSV 事先轉好，供頁面預設載入
 ```
 
 路徑必須與前端 `BASE_URL + 'data/real-price-registration/...'` 一致。
 
-### `manifest.json`（建議欄位）
+| 檔案 | 用途 |
+|------|------|
+| `士林區實價登錄.csv` | 標題契約樣板；Hero「下載」固定下載此檔；也可當轉換腳本輸入 |
+| `transactions.json` | 頁面預設分析資料（已解析），避免每次進頁都 parse CSV |
 
-```json
-{
-  "generatedAt": "ISO-8601",
-  "source": "MOI real price registration open data",
-  "periods": ["..."],
-  "scope": {
-    "cities": ["台北市"],
-    "transactionType": "買賣",
-    "years": [2023, 2024, 2025]
-  },
-  "files": ["monthly-summary.json"]
-}
-```
+舊的 Open Data 產物（`manifest.json`、`monthly-summary.json`、`filter-options.json` 等）**不再是主路徑**；若不需要可移除，勿再把它們寫成必備依賴。
 
-### `monthly-summary.json`（建議列結構，可再擴）
+### CSV 標題契約（正規化後必須一致）
+
+本地預設檔與上傳檔標題（去掉換行與多餘空白後）必須完全一致：
+
+- `地段位置或門牌`
+- `社區簡稱`
+- `交易日期`
+- `總價(萬元)`
+- `單價(萬元/坪)`
+- `總面積(坪)`
+- `主建物佔比`
+- `型態`
+- `屋齡`
+- `樓別/樓高`
+- `交易標的`
+- `交易筆棟數`
+- `建物現況格局`
+- `車位總價(萬元)`
+- `管理組織`
+- `電梯`
+- `主要用途`
+- `備註`
+
+注意：原始檔部分欄位用引號包住並含換行（如 `"單價\n(萬元/坪)"`），驗證時先正規化再比對。
+
+### `transactions.json`（分析用列結構）
+
+由 CSV 解析而來，需同時保留 **CSV 原始 18 欄**（清單顯示）與 **衍生欄位**（篩選／圖表）：
 
 ```json
 [
   {
-    "year": 2024,
-    "month": 1,
+    "id": "...",
     "city": "台北市",
-    "district": null,
-    "dealCount": 0,
-    "unitPriceAvg": null,
-    "unitPriceMedian": null
+    "district": "士林區",
+    "roadName": "延平北路六段",
+    "fullAddress": "士林區延平北路六段…",
+    "buildingType": "住宅大樓(11層含以上有電梯)",
+    "tradeDate": "2026-06-11",
+    "tradeYearMonth": "2026-06",
+    "buildingCompletionDate": null,
+    "buildingAgeYears": 20,
+    "buildingAreaPing": 22.73,
+    "totalPriceWan": 900,
+    "unitPriceWanPerPing": 39.59,
+    "hasParking": true,
+    "parkingType": null,
+    "remark": "…",
+    "address": "士林區延平北路六段…",
+    "communityName": "",
+    "tradeDateRaw": "115/06/11",
+    "totalPriceWanRaw": "900",
+    "unitPriceWanPerPingRaw": "39.59",
+    "buildingAreaPingRaw": "22.73",
+    "mainBuildingRatio": "61.44%",
+    "buildingAgeRaw": "20",
+    "floorInfo": "七層/十一層",
+    "transactionTarget": "房地(土地+建物)+車位",
+    "transactionUnits": "土:1 建:1車:1",
+    "layout": "1房1廳1衛",
+    "parkingPriceWanRaw": "",
+    "hasManagement": "有",
+    "hasElevator": "有",
+    "mainUse": "住家用"
   }
 ]
 ```
 
-- 單價單位與計算方式（例：元／坪，總價÷建物面積並做車位／非建物過濾）寫進管線註解與 `manifest` 或 README 片段，前後端一致。
-- 興趣專案建議**先縮小範圍**（單一或少數縣市、近幾年、僅買賣），避免 repo／Pages 過大。
+衍生規則摘要：
 
-## Pipeline steps
+- `district` / `roadName`：從 `地段位置或門牌` 解析
+- `tradeDate` / `tradeYearMonth`：民國 `yyy/mm/dd` → 西元
+- `buildingType` ← `型態`；屋齡／坪數／總價／單價由對應欄位轉 number
+- `hasParking`：由 `交易筆棟數`（`車:` 且非 0）、`交易標的` 含車位、或 `車位總價` 判斷
 
-1. **Download**：取得指定期別 ZIP（本期與必要之歷史期）
-2. **Extract**：解壓 CSV
-3. **Parse & clean**：編碼、欄位對應、排除無效列、計算單價與交易年月
-4. **Aggregate**：依年／月（及縣市等維度）產出 summary
-5. **Write**：寫入 `public/data/real-price-registration/`
-6. **Commit or upload**：Actions 中 commit 回預設分支，或上傳 Artifact／Release（偏好 commit 到 `public/data` 以便 Pages 直接提供）
+## Optional conversion script（手動）
 
-腳本語言建議：Node.js 或 Python（擇一寫進 repo，例如 `scripts/real-price-registration/`），並在 skill 實作時固定一種。
+若要更新本地預設 JSON，可提供 **手動執行** 的 Node 腳本（例如 `scripts/real-price-registration/csv-to-json.mjs`）：
 
-## GitHub Actions
+1. 讀取 `士林區實價登錄.csv`
+2. 驗證標題契約
+3. 轉成與前端相同的 `RealPriceTransaction[]`
+4. 寫入 `transactions.json`
 
-建議 workflow（名稱可自訂）：
-
-- **triggers**：`workflow_dispatch`（手動）+ `schedule`（例：每月 2／12／22，避開官方公布當日尖峰）
-- **job**：checkout → 跑管線腳本 → 若有檔案變更則 commit push（需 `contents: write`）
-- Pages 部署可沿用既有前端 build workflow；資料更新後觸發或與 build 分開皆可
+- **不要**接 GitHub Actions schedule
+- **不要**從 Open Data／查詢網自動下載
+- 開發者有新的 CSV 時，自行替換 CSV 後跑一次腳本即可
 
 ## Interest-project constraints
 
-- 不爬動態查詢網、不繞過 Open Data 授權條款
-- 不把全國原始 CSV 長期塞進 git；只提交精簡 JSON
-- 失敗時 Actions 應失敗並可重跑；前端可顯示 `manifest.generatedAt` 讓使用者知道資料多久以前
+- 資料來源僅限使用者自行從 [lvr.land.moi.gov.tw](https://lvr.land.moi.gov.tw/) 取得的檔案，或 repo 內已放好的靜態檔
+- 不引入外部資料庫
+- 不實作 Open Data／排程自動化更新
+- CSV 表頭可能含 BOM 或引號內換行，parser／轉換腳本都要正規化後再驗證
+
+## Code comments
+
+轉換腳本與相關 TypeScript 註解，同樣遵守 `vue-frontend-framework` 的 **Comment style**：完整 `@description`／規則條列，讓人能讀懂解析與欄位轉換邏輯。
 
 ## Relation to other skills
 
 - 前端框架：`vue-frontend-framework`
-- 分析頁：`vue-frontend-framework/real-price-registration`（讀取本管線產出）
-- 其他 Open Data：另開獨立資料管線 skill，勿塞進本目錄
+- 分析頁：`vue-frontend-framework/real-price-registration`（讀取本地 JSON 或上傳 CSV）

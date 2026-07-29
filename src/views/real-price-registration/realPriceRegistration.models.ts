@@ -1,10 +1,35 @@
-export interface RealPriceTransaction {
+/** CSV 原始欄位（清單顯示用，標題與本地檔一致） */
+export interface RealPriceCsvRow {
+  address: string
+  communityName: string
+  tradeDateRaw: string
+  totalPriceWanRaw: string
+  unitPriceWanPerPingRaw: string
+  buildingAreaPingRaw: string
+  mainBuildingRatio: string
+  buildingType: string
+  buildingAgeRaw: string
+  floorInfo: string
+  transactionTarget: string
+  transactionUnits: string
+  layout: string
+  parkingPriceWanRaw: string
+  hasManagement: string
+  hasElevator: string
+  mainUse: string
+  remark: string
+}
+
+/**
+ * 分析用交易列：保留 CSV 原始欄位供清單顯示，
+ * 同時提供篩選／圖表所需的正規化衍生欄位。
+ */
+export interface RealPriceTransaction extends RealPriceCsvRow {
   id: string
   city: string
   district: string
   roadName: string | null
   fullAddress: string
-  buildingType: string
   tradeDate: string
   tradeYearMonth: string
   buildingCompletionDate: string | null
@@ -14,7 +39,6 @@ export interface RealPriceTransaction {
   unitPriceWanPerPing: number | null
   hasParking: boolean
   parkingType: string | null
-  remark: string
 }
 
 export interface RealPriceManifest {

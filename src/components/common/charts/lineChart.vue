@@ -2,6 +2,16 @@
 import { computed } from 'vue'
 import type { MonthlyMetricPoint } from '@/views/real-price-registration/realPriceRegistration.models'
 
+/**
+ * @description 月度折線圖 props
+ * @property {string} title 圖卡標題
+ * @property {MonthlyMetricPoint[]} points 依年月排序的資料點
+ * @property {string} primaryLabel 主線圖例（通常為中位數）
+ * @property {string} [secondaryLabel] 輔線圖例（通常為平均；空字串則不畫輔線）
+ * @property {string} unitLabel 右上角 Y 軸單位文字
+ * @property {string} [xAxisLabel] 底部 X 軸名稱（預設「成交年月」）
+ * @property {string} [emptyText] 無資料時提示
+ */
 const props = withDefaults(
   defineProps<{
     title: string
@@ -19,6 +29,7 @@ const props = withDefaults(
   },
 )
 
+// 資料點多時加寬繪圖區，讓橫向捲動只發生在圖表 viewport，不撐開整頁
 const width = computed(() => Math.max(720, props.points.length * 90))
 const height = 280
 const padding = { top: 24, right: 18, bottom: 52, left: 40 }
@@ -27,6 +38,9 @@ const allValues = computed(() =>
   props.points.flatMap((point) => [point.primary, point.secondary ?? null]).filter((value): value is number => value != null),
 )
 
+/**
+ * @description 依主／輔線數值計算 Y 軸可視範圍，上下各留約 15% 邊距；全為同值時仍給最小 span
+ */
 const chartBounds = computed(() => {
   if (allValues.value.length === 0) return null
   const min = Math.min(...allValues.value)
@@ -38,12 +52,18 @@ const chartBounds = computed(() => {
   }
 })
 
+/**
+ * @description 把資料點索引對應到 SVG X 座標（單點置中；多點均分內寬）
+ */
 function xPosition(index: number) {
   const innerWidth = width.value - padding.left - padding.right
   if (props.points.length <= 1) return padding.left + innerWidth / 2
   return padding.left + (index / (props.points.length - 1)) * innerWidth
 }
 
+/**
+ * @description 把數值對應到 SVG Y 座標（數值越大越靠上）
+ */
 function yPosition(value: number) {
   const bounds = chartBounds.value
   if (!bounds) return height - padding.bottom
@@ -52,6 +72,9 @@ function yPosition(value: number) {
   return height - padding.bottom - ratio * innerHeight
 }
 
+/**
+ * @description 組出折線 polyline 的 points 字串；缺值的月份略過該頂點
+ */
 function buildLine(type: 'primary' | 'secondary') {
   const points = props.points
     .map((point, index) => {

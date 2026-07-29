@@ -6,6 +6,9 @@ import type {
   ScatterPoint,
 } from './realPriceRegistration.models'
 
+/**
+ * @description 建立篩選條件的初始值（全部不限制；車位為「不限」）
+ */
 export function createInitialFilters(): RealPriceFilters {
   return {
     district: '',
@@ -28,16 +31,29 @@ export function createInitialFilters(): RealPriceFilters {
   }
 }
 
+/**
+ * @description 把篩選輸入框字串轉成 number；空白或非數字回傳 null（代表該端不設限）
+ */
 function toNumber(value: string) {
   if (!value.trim()) return null
   const number = Number(value)
   return Number.isFinite(number) ? number : null
 }
 
+/**
+ * @description 不區分大小寫的子字串比對（路名／備註關鍵字搜尋用）
+ */
 function includesIgnoreCase(haystack: string, needle: string) {
   return haystack.toLocaleLowerCase().includes(needle.toLocaleLowerCase())
 }
 
+/**
+ * @description 判斷數值是否落在字串上下限區間內
+ *
+ * 規則：
+ * 1. min／max 空白視為該端不設限
+ * 2. value 為 null 時：只有上下限都未設才通過（缺值不納入有區間的篩選）
+ */
 function inRange(value: number | null, minRaw: string, maxRaw: string) {
   const min = toNumber(minRaw)
   const max = toNumber(maxRaw)
@@ -47,6 +63,15 @@ function inRange(value: number | null, minRaw: string, maxRaw: string) {
   return true
 }
 
+/**
+ * @description 依目前篩選條件過濾交易列
+ *
+ * 規則：
+ * 1. 行政區／建物型態／路名集合：有選才限制
+ * 2. 成交年月以 tradeYearMonth 字串比較（YYYY-MM）
+ * 3. 備註排除：備註包含任一已選排除字串即剔除
+ * 4. 屋齡／面積／總價／單價走區間；車位依 yes／no／all
+ */
 export function filterTransactions(transactions: RealPriceTransaction[], filters: RealPriceFilters) {
   return transactions.filter((row) => {
     if (filters.district && row.district !== filters.district) return false
@@ -73,6 +98,14 @@ export function filterTransactions(transactions: RealPriceTransaction[], filters
   })
 }
 
+/**
+ * @description 依路名關鍵字產生候選清單（需先輸入關鍵字才顯示，避免一次展開全部路名）
+ *
+ * 規則：
+ * 1. 關鍵字空白 → 回傳空陣列
+ * 2. 若已選行政區，只從該區交易列收集路名
+ * 3. 結果去重、繁中排序，並標示是否已在已選路名集合中
+ */
 export function getRoadCandidates(
   transactions: RealPriceTransaction[],
   filters: RealPriceFilters,
@@ -94,6 +127,14 @@ export function getRoadCandidates(
     .map((value) => ({ value, selected: selectedRoadNames.includes(value) }))
 }
 
+/**
+ * @description 依備註關鍵字產生「排除用」候選清單
+ *
+ * 規則：
+ * 1. 關鍵字空白 → 回傳空陣列
+ * 2. 從全部交易備註收集含關鍵字的完整字串後去重排序
+ * 3. selected 表示是否已在排除集合中
+ */
 export function getRemarkCandidates(
   transactions: RealPriceTransaction[],
   keyword: string,
@@ -113,6 +154,9 @@ export function getRemarkCandidates(
     .map((value) => ({ value, selected: selectedRemarkExclusions.includes(value) }))
 }
 
+/**
+ * @description 計算中位數；偶數筆取中間兩值平均，結果固定兩位小數；空陣列回傳 null
+ */
 function median(values: number[]) {
   if (values.length === 0) return null
   const sorted = [...values].sort((a, b) => a - b)
@@ -123,12 +167,18 @@ function median(values: number[]) {
   return Number(sorted[middle].toFixed(2))
 }
 
+/**
+ * @description 計算算術平均，結果固定兩位小數；空陣列回傳 null
+ */
 function average(values: number[]) {
   if (values.length === 0) return null
   const total = values.reduce((sum, value) => sum + value, 0)
   return Number((total / values.length).toFixed(2))
 }
 
+/**
+ * @description 依成交年月分桶，並依年月舊到新排序（供折線圖 X 軸由左到右）
+ */
 function aggregateByMonth(transactions: RealPriceTransaction[]) {
   const bucketMap = new Map<string, RealPriceTransaction[]>()
 
@@ -143,6 +193,10 @@ function aggregateByMonth(transactions: RealPriceTransaction[]) {
   return [...bucketMap.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
+/**
+ * @description 建立單價或總價折線資料：主線為每月中位數、輔線為每月平均
+ * @param metric `unitPriceWanPerPing` 或 `totalPriceWan`
+ */
 export function buildPriceSeries(
   transactions: RealPriceTransaction[],
   metric: 'unitPriceWanPerPing' | 'totalPriceWan',
@@ -160,6 +214,9 @@ export function buildPriceSeries(
   })
 }
 
+/**
+ * @description 建立每月成交筆數折線資料（primary 即該月筆數）
+ */
 export function buildDealCountSeries(transactions: RealPriceTransaction[]) {
   return aggregateByMonth(transactions).map(([label, rows]) => ({
     label,
@@ -168,6 +225,14 @@ export function buildDealCountSeries(transactions: RealPriceTransaction[]) {
   }))
 }
 
+/**
+ * @description 建立散點圖資料點（每筆成交一點），依成交時間由舊到新排序
+ *
+ * 規則：
+ * 1. 缺成交日或目標指標為 null 的列略過
+ * 2. xValue 用 Date.parse(tradeDate) 作為座標
+ * 3. meta 供滑鼠提示顯示日期｜行政區｜地址
+ */
 export function buildScatterPoints(
   transactions: RealPriceTransaction[],
   metric: 'unitPriceWanPerPing' | 'totalPriceWan',
@@ -184,6 +249,10 @@ export function buildScatterPoints(
     .sort((a, b) => a.xValue - b.xValue)
 }
 
+/**
+ * @description 把可空數值格式化成繁中數字字串；null 顯示為「—」
+ * @param digits 小數位數（預設 1）
+ */
 export function formatNumber(value: number | null, digits = 1) {
   if (value == null) return '—'
   return new Intl.NumberFormat('zh-TW', {

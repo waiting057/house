@@ -1,4 +1,24 @@
-/** CSV 原始欄位（清單顯示用，標題與本地檔一致） */
+/**
+ * @description CSV 原始欄位（清單顯示用），標題順序與本地／上傳檔契約一致
+ * @property {string} address 地段位置或門牌
+ * @property {string} communityName 社區簡稱
+ * @property {string} tradeDateRaw 交易日期原始字串（民國，如 115/06/11）
+ * @property {string} totalPriceWanRaw 總價（萬元）原始字串
+ * @property {string} unitPriceWanPerPingRaw 單價（萬元/坪）原始字串
+ * @property {string} buildingAreaPingRaw 總面積（坪）原始字串
+ * @property {string} mainBuildingRatio 主建物佔比
+ * @property {string} buildingType 建物型態
+ * @property {string} buildingAgeRaw 屋齡原始字串
+ * @property {string} floorInfo 樓別／樓高
+ * @property {string} transactionTarget 交易標的
+ * @property {string} transactionUnits 交易筆棟數
+ * @property {string} layout 建物現況格局
+ * @property {string} parkingPriceWanRaw 車位總價（萬元）原始字串
+ * @property {string} hasManagement 管理組織
+ * @property {string} hasElevator 電梯
+ * @property {string} mainUse 主要用途
+ * @property {string} remark 備註
+ */
 export interface RealPriceCsvRow {
   address: string
   communityName: string
@@ -21,8 +41,21 @@ export interface RealPriceCsvRow {
 }
 
 /**
- * 分析用交易列：保留 CSV 原始欄位供清單顯示，
- * 同時提供篩選／圖表所需的正規化衍生欄位。
+ * @description 分析用交易列：在 CSV 原始欄位之上，加上篩選／圖表所需的正規化衍生欄位
+ * @property {string} id 前端列識別（由日期、行政區、路名、價格與列索引組成）
+ * @property {string} city 城市（目前固定台北市）
+ * @property {string} district 行政區（自門牌解析）
+ * @property {string | null} roadName 標準化路名（自門牌解析；解析不到為 null）
+ * @property {string} fullAddress 完整門牌（等同 address）
+ * @property {string} tradeDate 西元成交日 YYYY-MM-DD（供排序）
+ * @property {string} tradeYearMonth 西元成交年月 YYYY-MM（供月份篩選與折線圖）
+ * @property {string | null} buildingCompletionDate 建築完成日（CSV 無此欄時為 null）
+ * @property {number | null} buildingAgeYears 屋齡（年）
+ * @property {number | null} buildingAreaPing 總面積（坪）
+ * @property {number | null} totalPriceWan 總價（萬元）
+ * @property {number | null} unitPriceWanPerPing 單價（萬元/坪）
+ * @property {boolean} hasParking 是否含車位
+ * @property {string | null} parkingType 車位類型（CSV 無對應欄時為 null）
  */
 export interface RealPriceTransaction extends RealPriceCsvRow {
   id: string
@@ -41,25 +74,13 @@ export interface RealPriceTransaction extends RealPriceCsvRow {
   parkingType: string | null
 }
 
-export interface RealPriceManifest {
-  generatedAt: string | null
-  source: string
-  sourceUrl?: string
-  periods: string[]
-  scope: {
-    cities: string[]
-    transactionType: string
-    years: number[]
-  }
-  records?: {
-    transactions: number
-    months: number
-  }
-  loadingStrategy?: 'single-file' | 'chunked'
-  files: string[]
-  note?: string
-}
-
+/**
+ * @description 篩選下拉／候選集合的選項來源（由目前 active 交易資料重建）
+ * @property {string[]} districts 行政區清單
+ * @property {string[]} buildingTypes 建物型態清單
+ * @property {string[]} roadNames 路名清單
+ * @property {string[]} remarkValues 備註完整字串清單
+ */
 export interface FilterOptionsPayload {
   districts: string[]
   buildingTypes: string[]
@@ -67,6 +88,26 @@ export interface FilterOptionsPayload {
   remarkValues: string[]
 }
 
+/**
+ * @description 分析頁目前套用的篩選條件；空字串或空陣列代表該條件不限制
+ * @property {string} district 行政區（單選；空字串＝全部）
+ * @property {string} startTradeMonth 成交年月起（YYYY-MM）
+ * @property {string} endTradeMonth 成交年月迄（YYYY-MM）
+ * @property {string[]} buildingTypes 已選建物型態（多選；空＝不限）
+ * @property {string[]} selectedRoadNames 已選路名集合（有值時只保留符合者）
+ * @property {string[]} selectedRemarkExclusions 備註排除集合（備註包含任一字串則剔除）
+ * @property {string} roadKeyword 路名搜尋關鍵字（用來產生候選，不直接過濾清單）
+ * @property {string} remarkKeyword 備註搜尋關鍵字（用來產生排除候選）
+ * @property {string} minBuildingAge 屋齡下限
+ * @property {string} maxBuildingAge 屋齡上限
+ * @property {string} minArea 總面積（坪）下限
+ * @property {string} maxArea 總面積（坪）上限
+ * @property {string} minTotalPrice 總價（萬元）下限
+ * @property {string} maxTotalPrice 總價（萬元）上限
+ * @property {string} minUnitPrice 單價（萬元/坪）下限
+ * @property {string} maxUnitPrice 單價（萬元/坪）上限
+ * @property {'all' | 'yes' | 'no'} parking 車位：不限／有／無
+ */
 export interface RealPriceFilters {
   district: string
   startTradeMonth: string
@@ -87,6 +128,13 @@ export interface RealPriceFilters {
   parking: 'all' | 'yes' | 'no'
 }
 
+/**
+ * @description 折線圖單一月份資料點
+ * @property {string} label 成交年月 YYYY-MM（X 軸）
+ * @property {number | null} primary 主線數值（通常為中位數或成交筆數）
+ * @property {number | null} [secondary] 輔線數值（通常為平均數；成交量圖可不提供）
+ * @property {number} dealCount 該月成交筆數
+ */
 export interface MonthlyMetricPoint {
   label: string
   primary: number | null
@@ -94,11 +142,24 @@ export interface MonthlyMetricPoint {
   dealCount: number
 }
 
+/**
+ * @description 路名／備註搜尋候選列
+ * @property {string} value 候選字串
+ * @property {boolean} selected 是否已在待加入勾選集合中
+ */
 export interface CandidateItem {
   value: string
   selected: boolean
 }
 
+/**
+ * @description 散點圖單筆成交點
+ * @property {string} id 對應交易列 id
+ * @property {string} xLabel 成交日期字串（顯示用）
+ * @property {number} xValue 成交日時間戳（座標用）
+ * @property {number} yValue 單價或總價數值
+ * @property {string} meta 滑鼠提示用摘要（日期｜行政區｜地址）
+ */
 export interface ScatterPoint {
   id: string
   xLabel: string

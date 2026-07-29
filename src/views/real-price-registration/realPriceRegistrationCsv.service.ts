@@ -1,7 +1,9 @@
 import Papa from 'papaparse'
 import type { FilterOptionsPayload, RealPriceTransaction } from './realPriceRegistration.models'
 
-/** 本地 CSV 與上傳檔必須具備的標題（正規化後） */
+/**
+ * @description 本地 CSV 與上傳檔必須具備的標題（正規化後比對；順序也必須一致）
+ */
 export const REQUIRED_HEADERS = [
   '地段位置或門牌',
   '社區簡稱',
@@ -23,8 +25,14 @@ export const REQUIRED_HEADERS = [
   '備註',
 ] as const
 
+/**
+ * @description 本地預設 CSV 檔名（進頁載入與「下載」按鈕共用）
+ */
 export const LOCAL_CSV_FILENAME = '士林區實價登錄.csv'
 
+/**
+ * @description CSV 標題不符或解析後無有效列時拋出，供 UI 顯示「不符合格式」
+ */
 export class CsvFormatError extends Error {
   constructor(message = '不符合格式') {
     super(message)
@@ -32,7 +40,14 @@ export class CsvFormatError extends Error {
   }
 }
 
-/** 去掉換行與空白，讓多行引號表頭也能對齊契約 */
+/**
+ * @description 正規化 CSV 表頭文字，讓引號內換行或多餘空白仍能對齊契約
+ *
+ * 規則：
+ * 1. 去掉 BOM
+ * 2. 去掉換行
+ * 3. 去掉所有空白後再 trim
+ */
 export function normalizeHeader(text: string) {
   return String(text || '')
     .replace(/^\uFEFF/, '')
@@ -41,6 +56,10 @@ export function normalizeHeader(text: string) {
     .trim()
 }
 
+/**
+ * @description 驗證表頭是否與 REQUIRED_HEADERS 完全一致（正規化後、含順序）
+ * @returns 通過為 true；欄位數或任一欄名不符為 false
+ */
 export function validateHeaders(headers: string[]) {
   const normalized = headers.map(normalizeHeader).filter(Boolean)
   if (normalized.length !== REQUIRED_HEADERS.length) {
@@ -49,6 +68,9 @@ export function validateHeaders(headers: string[]) {
   return REQUIRED_HEADERS.every((header, index) => normalized[index] === header)
 }
 
+/**
+ * @description 把可能含千分位逗號的字串轉成 number；空值或非數字回傳 null
+ */
 function parseNumber(value: string) {
   if (!value || !String(value).trim()) return null
   const parsed = Number(String(value).replaceAll(',', '').trim())
@@ -56,8 +78,14 @@ function parseNumber(value: string) {
 }
 
 /**
- * 解析實價登錄常見的民國日期，例如 115/06/11。
- * 轉成西元 YYYY-MM-DD，供排序與月份篩選使用。
+ * @description 解析實價登錄常見的民國日期（例如 115/06/11）為西元日期
+ *
+ * 規則：
+ * 1. 僅接受 `yyy/mm/dd` 或 `yy/mm/dd`
+ * 2. 西元年 = 民國年 + 1911
+ * 3. 月份／日期不合理時回傳 null
+ *
+ * @returns `{ tradeDate: YYYY-MM-DD, tradeYearMonth: YYYY-MM }`；無法解析則 null
  */
 function parseRocTradeDate(raw: string) {
   const value = String(raw || '').trim()
@@ -77,11 +105,22 @@ function parseRocTradeDate(raw: string) {
   }
 }
 
+/**
+ * @description 自門牌開頭擷取行政區（如「士林區」）；找不到時回傳「未提供」
+ */
 function extractDistrict(address: string) {
   const match = String(address || '').match(/^([\u4e00-\u9fa5]{2,3}區)/)
   return match ? match[1] : '未提供'
 }
 
+/**
+ * @description 自門牌擷取路名（去掉行政區後，取到「路／街／大道」及可選段別）
+ *
+ * 規則：
+ * 1. 先去掉開頭「○○區」
+ * 2. 優先匹配「…路／街／大道」＋可選段別
+ * 3. 匹配不到則回傳去掉行政區後的剩餘字串；空門牌回傳 null
+ */
 function extractRoadName(address: string) {
   const value = String(address || '').trim()
   if (!value) return null
@@ -91,6 +130,14 @@ function extractRoadName(address: string) {
   return match ? match[1] : withoutDistrict || null
 }
 
+/**
+ * @description 判斷該筆交易是否含車位
+ *
+ * 規則（任一成立即為有車位）：
+ * 1. 交易標的含「車位」
+ * 2. 交易筆棟數出現 `車:N` 且 N > 0
+ * 3. 車位總價可解析且 > 0
+ */
 function detectHasParking(row: {
   transactionTarget: string
   transactionUnits: string
@@ -106,6 +153,9 @@ function detectHasParking(row: {
   return parkingPrice != null && parkingPrice > 0
 }
 
+/**
+ * @description 依正規化後的標題名稱，從 papaparse 列物件取出欄位值（相容表頭含換行）
+ */
 function getField(row: Record<string, string>, header: string) {
   const target = normalizeHeader(header)
   for (const [key, value] of Object.entries(row)) {
@@ -116,6 +166,11 @@ function getField(row: Record<string, string>, header: string) {
   return ''
 }
 
+/**
+ * @description 把單一 CSV 列轉成 RealPriceTransaction；缺門牌或日期無法解析時略過該列
+ * @param row papaparse 產出的欄位 map
+ * @param index 原始列索引（用於組成穩定 id）
+ */
 function mapRow(row: Record<string, string>, index: number): RealPriceTransaction | null {
   const address = getField(row, '地段位置或門牌')
   const tradeDateRaw = getField(row, '交易日期')
@@ -182,8 +237,14 @@ function mapRow(row: Record<string, string>, index: number): RealPriceTransactio
 }
 
 /**
- * 解析 CSV 文字：先驗證表頭契約，再轉成分析用交易列。
- * 表頭不符時拋出 CsvFormatError，供 UI 顯示「不符合格式」。
+ * @description 解析 CSV 文字為分析用交易列，並依西元成交日新到舊排序
+ *
+ * 規則：
+ * 1. 先用 papaparse 讀表頭與資料列
+ * 2. 表頭須通過 validateHeaders，否則拋 CsvFormatError
+ * 3. 無法映射的列略過；若最後有效列為 0 也拋 CsvFormatError
+ *
+ * @throws {CsvFormatError} 標題不符或沒有任何有效交易列
  */
 export function parseCsvText(csvText: string): RealPriceTransaction[] {
   const parsed = Papa.parse<Record<string, string>>(csvText, {
@@ -208,6 +269,9 @@ export function parseCsvText(csvText: string): RealPriceTransaction[] {
   return transactions
 }
 
+/**
+ * @description 從目前交易資料重建篩選候選（行政區、型態、路名、備註），並以繁中排序
+ */
 export function buildFilterOptionsFromTransactions(
   transactions: RealPriceTransaction[],
 ): FilterOptionsPayload {

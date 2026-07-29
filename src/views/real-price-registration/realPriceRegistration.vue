@@ -39,14 +39,19 @@ const filterOptions = ref<FilterOptionsPayload>({
 const localTransactions = ref<RealPriceTransaction[]>([])
 /** 目前分析用資料（本地或上傳成功後的資料） */
 const activeTransactions = ref<RealPriceTransaction[]>([])
+/** 目前資料來源顯示名稱（本地檔名或上傳檔名） */
 const activeSourceLabel = ref(LOCAL_CSV_FILENAME)
 const errorMessage = ref('')
+/** 上傳 CSV 標題／解析失敗時顯示「不符合格式」彈窗 */
 const showFormatErrorModal = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const scatterMetric = ref<'unitPriceWanPerPing' | 'totalPriceWan'>('unitPriceWanPerPing')
 
+/** 路名候選區：勾選後尚未加入「已選路名」的暫存 */
 const pendingRoadSelections = ref<string[]>([])
+/** 備註候選區：勾選後尚未加入「排除集合」的暫存 */
 const pendingRemarkSelections = ref<string[]>([])
+/** 各區塊是否展開（預設全部展開） */
 const sectionStates = reactive({
   filters: true,
   summary: true,
@@ -58,6 +63,7 @@ const sectionStates = reactive({
   list: true,
 })
 
+/** 清單表頭：與 CSV 契約 18 欄完全一致 */
 const listColumns = REQUIRED_HEADERS.map((header) => ({
   header,
   key: header,
@@ -78,10 +84,16 @@ const totalPriceSeries = computed(() => buildPriceSeries(filteredTransactions.va
 const dealCountSeries = computed(() => buildDealCountSeries(filteredTransactions.value))
 const scatterPoints = computed(() => buildScatterPoints(filteredTransactions.value, scatterMetric.value))
 
+/** 符合條件清單：依西元成交日新到舊 */
 const sortedTransactions = computed(() =>
   [...filteredTransactions.value].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)),
 )
 
+/**
+ * @description 切換目前分析資料集：寫入 active、重建 filterOptions，並重設篩選為初始狀態
+ * @param next 新的交易列
+ * @param sourceLabel 來源顯示名稱（本地檔名或上傳檔名）
+ */
 function applyActiveDataset(next: RealPriceTransaction[], sourceLabel: string) {
   activeTransactions.value = next
   activeSourceLabel.value = sourceLabel
@@ -89,7 +101,9 @@ function applyActiveDataset(next: RealPriceTransaction[], sourceLabel: string) {
   resetFilters()
 }
 
-/** 清單欄位對應 CSV 原始字串，保持標題與來源檔一致 */
+/**
+ * @description 依 CSV 標題取出清單儲存格文字（顯示原始字串，空值用「—」）
+ */
 function getCsvCellValue(row: RealPriceTransaction, header: string) {
   const map: Record<string, string> = {
     地段位置或門牌: row.address,
@@ -115,6 +129,9 @@ function getCsvCellValue(row: RealPriceTransaction, header: string) {
   return value && value.trim() ? value : '—'
 }
 
+/**
+ * @description 計算摘要統計（平均、中位數、最高、最低）；無有效數值時全部為 null
+ */
 function calculateStats(values: Array<number | null>) {
   const numbers = values.filter((value): value is number => value != null).sort((a, b) => a - b)
   if (numbers.length === 0) {
@@ -148,6 +165,9 @@ const summary = computed(() => {
   }
 })
 
+/**
+ * @description 在候選暫存陣列中切換某一值的勾選狀態（有則移除、無則加入）
+ */
 function togglePendingSelection(collection: string[], value: string) {
   const index = collection.indexOf(value)
   if (index >= 0) {
@@ -157,6 +177,9 @@ function togglePendingSelection(collection: string[], value: string) {
   collection.push(value)
 }
 
+/**
+ * @description 把 pending 路名併入已選路名集合後清空 pending
+ */
 function addRoadSelections() {
   for (const value of pendingRoadSelections.value) {
     if (!filters.selectedRoadNames.includes(value)) {
@@ -166,12 +189,18 @@ function addRoadSelections() {
   pendingRoadSelections.value = []
 }
 
+/**
+ * @description 一次把目前路名候選全部加入已選路名
+ */
 function addAllRoadCandidates() {
   const values = roadCandidates.value.map((item) => item.value)
   pendingRoadSelections.value = values
   addRoadSelections()
 }
 
+/**
+ * @description 把 pending 備註併入排除集合後清空 pending
+ */
 function addRemarkSelections() {
   for (const value of pendingRemarkSelections.value) {
     if (!filters.selectedRemarkExclusions.includes(value)) {
@@ -181,12 +210,18 @@ function addRemarkSelections() {
   pendingRemarkSelections.value = []
 }
 
+/**
+ * @description 一次把目前備註候選全部加入排除集合
+ */
 function addAllRemarkCandidates() {
   const values = remarkCandidates.value.map((item) => item.value)
   pendingRemarkSelections.value = values
   addRemarkSelections()
 }
 
+/**
+ * @description 從已選集合移除單一項目（路名或備註排除 chip）
+ */
 function removeSelectedItem(collection: string[], value: string) {
   const index = collection.indexOf(value)
   if (index >= 0) {
@@ -194,6 +229,9 @@ function removeSelectedItem(collection: string[], value: string) {
   }
 }
 
+/**
+ * @description 切換已選集合中的項目（建物型態 chip：再點同一項可取消）
+ */
 function toggleSelectedItem(collection: string[], value: string) {
   const index = collection.indexOf(value)
   if (index >= 0) {
@@ -203,16 +241,25 @@ function toggleSelectedItem(collection: string[], value: string) {
   collection.push(value)
 }
 
+/**
+ * @description 展開／收合指定區塊
+ */
 function toggleSection(section: keyof typeof sectionStates) {
   sectionStates[section] = !sectionStates[section]
 }
 
+/**
+ * @description 重設所有篩選與候選 pending 狀態
+ */
 function resetFilters() {
   Object.assign(filters, createInitialFilters())
   pendingRoadSelections.value = []
   pendingRemarkSelections.value = []
 }
 
+/**
+ * @description 進頁載入本地預設 CSV，寫入 local／active 並重建篩選選項
+ */
 async function loadData() {
   errorMessage.value = ''
   appStore.setLoading(true)
@@ -227,10 +274,21 @@ async function loadData() {
   }
 }
 
+/**
+ * @description 觸發隱藏的 file input，開啟系統檔案選擇
+ */
 function openFilePicker() {
   fileInputRef.value?.click()
 }
 
+/**
+ * @description 處理上傳 CSV：成功則切換 active；失敗則彈窗並維持／還原本地資料
+ *
+ * 規則：
+ * 1. 讀取檔案文字後走 parseCsvText（標題契約）
+ * 2. 成功：applyActiveDataset(上傳資料, 檔名)
+ * 3. 失敗：顯示「不符合格式」；若目前不是本地來源，還原 localTransactions
+ */
 async function onCsvSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -250,6 +308,9 @@ async function onCsvSelected(event: Event) {
   }
 }
 
+/**
+ * @description 固定下載本地預設 CSV（不是目前上傳檔）
+ */
 function downloadLocalCsv() {
   const link = document.createElement('a')
   link.href = RealPriceRegistrationDataService.getLocalCsvUrl()
@@ -260,6 +321,9 @@ function downloadLocalCsv() {
   link.remove()
 }
 
+/**
+ * @description 關閉「不符合格式」彈窗
+ */
 function closeFormatErrorModal() {
   showFormatErrorModal.value = false
 }

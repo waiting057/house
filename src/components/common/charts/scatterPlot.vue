@@ -2,6 +2,14 @@
 import { computed } from 'vue'
 import type { ScatterPoint } from '@/views/real-price-registration/realPriceRegistration.models'
 
+/**
+ * @description 成交散點圖 props
+ * @property {string} title 圖卡標題
+ * @property {ScatterPoint[]} points 單筆成交點（已依時間排序）
+ * @property {string} unitLabel 右上角 Y 軸單位文字
+ * @property {string} [xAxisLabel] 底部 X 軸名稱（預設「成交年月」）
+ * @property {string} [emptyText] 無資料時提示
+ */
 const props = withDefaults(
   defineProps<{
     title: string
@@ -16,10 +24,14 @@ const props = withDefaults(
   },
 )
 
+// 點很多時加寬繪圖區；上限避免無限變寬，下限確保稀疏資料仍可讀
 const width = computed(() => Math.max(960, Math.min(1800, props.points.length * 18)))
 const height = 300
 const padding = { top: 22, right: 24, bottom: 56, left: 44 }
 
+/**
+ * @description X 軸時間範圍；僅一筆時把 max 往後推 1ms，避免除以零
+ */
 const xBounds = computed(() => {
   if (props.points.length === 0) return null
   const min = Math.min(...props.points.map((point) => point.xValue))
@@ -27,6 +39,9 @@ const xBounds = computed(() => {
   return { min, max: max === min ? min + 1 : max }
 })
 
+/**
+ * @description Y 軸數值範圍，上下各留約 12% 邊距
+ */
 const yBounds = computed(() => {
   if (props.points.length === 0) return null
   const min = Math.min(...props.points.map((point) => point.yValue))
@@ -38,18 +53,27 @@ const yBounds = computed(() => {
   }
 })
 
+/**
+ * @description 時間戳 → SVG X 座標
+ */
 function xPosition(value: number) {
   if (!xBounds.value) return padding.left
   const innerWidth = width.value - padding.left - padding.right
   return padding.left + ((value - xBounds.value.min) / (xBounds.value.max - xBounds.value.min)) * innerWidth
 }
 
+/**
+ * @description 數值 → SVG Y 座標（越大越靠上）
+ */
 function yPosition(value: number) {
   if (!yBounds.value) return height - padding.bottom
   const innerHeight = height - padding.top - padding.bottom
   return height - padding.bottom - ((value - yBounds.value.min) / (yBounds.value.max - yBounds.value.min)) * innerHeight
 }
 
+/**
+ * @description 在 X 軸範圍內均分約 6 個刻度，標籤格式為 YYYY-MM（UTC）
+ */
 const xTicks = computed(() => {
   const bounds = xBounds.value
   if (!bounds) return []

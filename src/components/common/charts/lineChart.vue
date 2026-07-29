@@ -153,74 +153,74 @@ function formatPointValue(value: number | null) {
           role="img"
           :aria-label="title"
         >
-        <line
-          v-for="tick in yAxisTicks"
-          :key="tick.label"
-          :x1="padding.left"
-          :x2="width - padding.right"
-          :y1="tick.y"
-          :y2="tick.y"
-          class="chart-card__grid"
-        />
-        <text
-          v-for="tick in yAxisTicks"
-          :key="`${tick.label}-text`"
-          :x="8"
-          :y="tick.y + 4"
-          class="chart-card__axis"
-        >
-          {{ tick.label }}
-        </text>
-
-        <polyline
-          v-if="secondaryLine"
-          :points="secondaryLine"
-          class="chart-card__line chart-card__line--secondary"
-        />
-        <polyline
-          :points="primaryLine"
-          class="chart-card__line chart-card__line--primary"
-        />
-
-        <g
-          v-for="(point, index) in points"
-          :key="point.label"
-        >
-          <circle
-            v-if="point.primary != null"
-            :cx="xPosition(index)"
-            :cy="yPosition(point.primary)"
-            r="3.5"
-            class="chart-card__dot"
+          <line
+            v-for="tick in yAxisTicks"
+            :key="tick.label"
+            :x1="padding.left"
+            :x2="width - padding.right"
+            :y1="tick.y"
+            :y2="tick.y"
+            class="chart-card__grid"
           />
           <text
-            v-if="point.primary != null"
-            :x="xPosition(index)"
-            :y="yPosition(point.primary) - 10"
-            text-anchor="middle"
-            class="chart-card__value"
-          >
-            {{ formatPointValue(point.primary) }}
-          </text>
-          <text
-            v-if="index % Math.max(1, Math.ceil(points.length / 6)) === 0 || index === points.length - 1"
-            :x="xPosition(index)"
-            :y="height - 24"
-            text-anchor="middle"
+            v-for="tick in yAxisTicks"
+            :key="`${tick.label}-text`"
+            :x="8"
+            :y="tick.y + 4"
             class="chart-card__axis"
           >
-            {{ point.label }}
+            {{ tick.label }}
           </text>
-        </g>
 
-        <text
-          :x="width / 2"
-          :y="height - 4"
-          text-anchor="middle"
-          class="chart-card__axis chart-card__axis-label"
-        >
-          {{ xAxisLabel }}
-        </text>
+          <polyline
+            v-if="secondaryLine"
+            :points="secondaryLine"
+            class="chart-card__line chart-card__line--secondary"
+          />
+          <polyline
+            :points="primaryLine"
+            class="chart-card__line chart-card__line--primary"
+          />
+
+          <g
+            v-for="(point, index) in points"
+            :key="point.label"
+          >
+            <circle
+              v-if="point.primary != null"
+              :cx="xPosition(index)"
+              :cy="yPosition(point.primary)"
+              r="3.5"
+              class="chart-card__dot"
+            />
+            <text
+              v-if="point.primary != null"
+              :x="xPosition(index)"
+              :y="yPosition(point.primary) - 10"
+              text-anchor="middle"
+              class="chart-card__value"
+            >
+              {{ formatPointValue(point.primary) }}
+            </text>
+            <text
+              v-if="index % Math.max(1, Math.ceil(points.length / 6)) === 0 || index === points.length - 1"
+              :x="xPosition(index)"
+              :y="height - 24"
+              text-anchor="middle"
+              class="chart-card__axis"
+            >
+              {{ point.label }}
+            </text>
+          </g>
+
+          <text
+            :x="width / 2"
+            :y="height - 4"
+            text-anchor="middle"
+            class="chart-card__axis chart-card__axis-label"
+          >
+            {{ xAxisLabel }}
+          </text>
         </svg>
       </div>
     </div>

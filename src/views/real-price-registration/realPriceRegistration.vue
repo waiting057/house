@@ -440,344 +440,344 @@ onMounted(() => {
         </div>
 
         <div class="filters-grid">
-        <label class="field">
-          <span class="field__label">行政區</span>
-          <select
-            v-model="filters.district"
-            class="field__control"
-          >
-            <option value="">
-              全部行政區
-            </option>
-            <option
-              v-for="district in filterOptions.districts"
-              :key="district"
-              :value="district"
+          <label class="field">
+            <span class="field__label">行政區</span>
+            <select
+              v-model="filters.district"
+              class="field__control"
             >
-              {{ district }}
-            </option>
-          </select>
-        </label>
+              <option value="">
+                全部行政區
+              </option>
+              <option
+                v-for="district in filterOptions.districts"
+                :key="district"
+                :value="district"
+              >
+                {{ district }}
+              </option>
+            </select>
+          </label>
 
-        <label class="field">
-          <span class="field__label">交易時間區間</span>
-          <div class="range">
-            <input
-              v-model="filters.startTradeMonth"
-              class="field__control"
-              type="month"
-            >
-            <span class="range__sep">~</span>
-            <input
-              v-model="filters.endTradeMonth"
-              class="field__control"
-              type="month"
-            >
+          <label class="field">
+            <span class="field__label">交易時間區間</span>
+            <div class="range">
+              <input
+                v-model="filters.startTradeMonth"
+                class="field__control"
+                type="month"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.endTradeMonth"
+                class="field__control"
+                type="month"
+              >
+            </div>
+          </label>
+
+          <div class="field field--full">
+            <span class="field__label">建物型態</span>
+            <p class="field__hint">
+              可多選，再次點擊同一項即可取消。
+            </p>
+            <div class="option-chips">
+              <button
+                v-for="type in filterOptions.buildingTypes"
+                :key="type"
+                type="button"
+                class="option-chip"
+                :class="{ 'option-chip--active': filters.buildingTypes.includes(type) }"
+                @click="toggleSelectedItem(filters.buildingTypes, type)"
+              >
+                {{ type }}
+              </button>
+            </div>
           </div>
-        </label>
 
-        <div class="field field--full">
-          <span class="field__label">建物型態</span>
-          <p class="field__hint">
-            可多選，再次點擊同一項即可取消。
-          </p>
-          <div class="option-chips">
-            <button
-              v-for="type in filterOptions.buildingTypes"
-              :key="type"
-              type="button"
-              class="option-chip"
-              :class="{ 'option-chip--active': filters.buildingTypes.includes(type) }"
-              @click="toggleSelectedItem(filters.buildingTypes, type)"
-            >
-              {{ type }}
-            </button>
+          <div class="field field--full">
+            <span class="field__label">主要用途</span>
+            <p class="field__hint">
+              可多選，再次點擊同一項即可取消。
+            </p>
+            <div class="option-chips">
+              <button
+                v-for="use in filterOptions.mainUses"
+                :key="use"
+                type="button"
+                class="option-chip"
+                :class="{ 'option-chip--active': filters.mainUses.includes(use) }"
+                @click="toggleSelectedItem(filters.mainUses, use)"
+              >
+                {{ use }}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="field field--full">
-          <span class="field__label">主要用途</span>
-          <p class="field__hint">
-            可多選，再次點擊同一項即可取消。
-          </p>
-          <div class="option-chips">
-            <button
-              v-for="use in filterOptions.mainUses"
-              :key="use"
-              type="button"
-              class="option-chip"
-              :class="{ 'option-chip--active': filters.mainUses.includes(use) }"
-              @click="toggleSelectedItem(filters.mainUses, use)"
-            >
-              {{ use }}
-            </button>
-          </div>
-        </div>
+          <label class="field">
+            <span class="field__label">屋齡區間</span>
+            <div class="range">
+              <input
+                v-model="filters.minBuildingAge"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最小"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.maxBuildingAge"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最大"
+              >
+            </div>
+          </label>
 
-        <label class="field">
-          <span class="field__label">屋齡區間</span>
-          <div class="range">
-            <input
-              v-model="filters.minBuildingAge"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最小"
-            >
-            <span class="range__sep">~</span>
-            <input
-              v-model="filters.maxBuildingAge"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最大"
-            >
-          </div>
-        </label>
+          <label class="field">
+            <span class="field__label">總面積（坪）</span>
+            <div class="range">
+              <input
+                v-model="filters.minArea"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最小"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.maxArea"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最大"
+              >
+            </div>
+          </label>
 
-        <label class="field">
-          <span class="field__label">總面積（坪）</span>
-          <div class="range">
-            <input
-              v-model="filters.minArea"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最小"
-            >
-            <span class="range__sep">~</span>
-            <input
-              v-model="filters.maxArea"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最大"
-            >
-          </div>
-        </label>
+          <label class="field">
+            <span class="field__label">總價（萬元）</span>
+            <div class="range">
+              <input
+                v-model="filters.minTotalPrice"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最小"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.maxTotalPrice"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最大"
+              >
+            </div>
+          </label>
 
-        <label class="field">
-          <span class="field__label">總價（萬元）</span>
-          <div class="range">
-            <input
-              v-model="filters.minTotalPrice"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最小"
-            >
-            <span class="range__sep">~</span>
-            <input
-              v-model="filters.maxTotalPrice"
-              class="field__control"
-              inputmode="decimal"
-              placeholder="最大"
-            >
-          </div>
-        </label>
+          <label class="field">
+            <span class="field__label">單價（萬元/坪）</span>
+            <div class="range">
+              <input
+                v-model="filters.minUnitPrice"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最小"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.maxUnitPrice"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="最大"
+              >
+            </div>
+          </label>
 
-        <label class="field">
-          <span class="field__label">單價（萬元/坪）</span>
-          <div class="range">
-            <input
-              v-model="filters.minUnitPrice"
+          <label class="field">
+            <span class="field__label">有無車位</span>
+            <select
+              v-model="filters.parking"
               class="field__control"
-              inputmode="decimal"
-              placeholder="最小"
             >
-            <span class="range__sep">~</span>
-            <input
-              v-model="filters.maxUnitPrice"
+              <option value="all">
+                不限
+              </option>
+              <option value="yes">
+                有車位
+              </option>
+              <option value="no">
+                無車位
+              </option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">有無管理組織</span>
+            <select
+              v-model="filters.management"
               class="field__control"
-              inputmode="decimal"
-              placeholder="最大"
             >
-          </div>
-        </label>
-
-        <label class="field">
-          <span class="field__label">有無車位</span>
-          <select
-            v-model="filters.parking"
-            class="field__control"
-          >
-            <option value="all">
-              不限
-            </option>
-            <option value="yes">
-              有車位
-            </option>
-            <option value="no">
-              無車位
-            </option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span class="field__label">有無管理組織</span>
-          <select
-            v-model="filters.management"
-            class="field__control"
-          >
-            <option value="all">
-              不限
-            </option>
-            <option value="yes">
-              有管理組織
-            </option>
-            <option value="no">
-              無管理組織
-            </option>
-          </select>
-        </label>
+              <option value="all">
+                不限
+              </option>
+              <option value="yes">
+                有管理組織
+              </option>
+              <option value="no">
+                無管理組織
+              </option>
+            </select>
+          </label>
         </div>
 
         <div class="search-blocks">
           <section class="search-block">
-          <div class="search-block__header">
-            <div>
-              <h3>路名多選</h3>
-              <p>輸入關鍵字後，選擇符合的路名加入篩選集合。</p>
+            <div class="search-block__header">
+              <div>
+                <h3>路名多選</h3>
+                <p>輸入關鍵字後，選擇符合的路名加入篩選集合。</p>
+              </div>
+              <div class="search-block__actions">
+                <button
+                  type="button"
+                  class="button button--ghost"
+                  @click="addAllRoadCandidates"
+                >
+                  全選候選
+                </button>
+                <button
+                  type="button"
+                  class="button"
+                  @click="addRoadSelections"
+                >
+                  加入已選
+                </button>
+              </div>
             </div>
-            <div class="search-block__actions">
-              <button
-                type="button"
-                class="button button--ghost"
-                @click="addAllRoadCandidates"
+
+            <input
+              v-model="filters.roadKeyword"
+              class="field__control"
+              placeholder="例如：士東路、中山北路六段、德行東路"
+            >
+
+            <div class="candidate-list">
+              <label
+                v-for="candidate in roadCandidates"
+                :key="candidate.value"
+                class="candidate-list__item"
               >
-                全選候選
-              </button>
-              <button
-                type="button"
-                class="button"
-                @click="addRoadSelections"
+                <input
+                  :checked="pendingRoadSelections.includes(candidate.value)"
+                  type="checkbox"
+                  @change="togglePendingSelection(pendingRoadSelections, candidate.value)"
+                >
+                <span>{{ candidate.value }}</span>
+              </label>
+              <p
+                v-if="filters.roadKeyword && roadCandidates.length === 0"
+                class="candidate-list__empty"
               >
-                加入已選
+                沒有符合的路名候選值。
+              </p>
+            </div>
+
+            <div class="chips">
+              <button
+                v-for="roadName in filters.selectedRoadNames"
+                :key="roadName"
+                type="button"
+                class="chip"
+                @click="removeSelectedItem(filters.selectedRoadNames, roadName)"
+              >
+                {{ roadName }} ×
               </button>
             </div>
-          </div>
-
-          <input
-            v-model="filters.roadKeyword"
-            class="field__control"
-            placeholder="例如：士東路、中山北路六段、德行東路"
-          >
-
-          <div class="candidate-list">
-            <label
-              v-for="candidate in roadCandidates"
-              :key="candidate.value"
-              class="candidate-list__item"
-            >
-              <input
-                :checked="pendingRoadSelections.includes(candidate.value)"
-                type="checkbox"
-                @change="togglePendingSelection(pendingRoadSelections, candidate.value)"
-              >
-              <span>{{ candidate.value }}</span>
-            </label>
-            <p
-              v-if="filters.roadKeyword && roadCandidates.length === 0"
-              class="candidate-list__empty"
-            >
-              沒有符合的路名候選值。
-            </p>
-          </div>
-
-          <div class="chips">
-            <button
-              v-for="roadName in filters.selectedRoadNames"
-              :key="roadName"
-              type="button"
-              class="chip"
-              @click="removeSelectedItem(filters.selectedRoadNames, roadName)"
-            >
-              {{ roadName }} ×
-            </button>
-          </div>
           </section>
 
           <section class="search-block">
-          <div class="search-block__header">
-            <div>
-              <h3>備註排除</h3>
-              <p>用關鍵字找出特殊交易、親友交易等備註後加入排除集合。</p>
-            </div>
-            <div class="search-block__actions">
-              <button
-                type="button"
-                class="button button--ghost"
-                @click="addAllRemarkCandidates"
-              >
-                全選候選
-              </button>
-              <button
-                type="button"
-                class="button"
-                @click="addRemarkSelections"
-              >
-                加入排除
-              </button>
-            </div>
-          </div>
-
-          <input
-            v-model="filters.remarkKeyword"
-            class="field__control"
-            placeholder="例如：親友、關係人、車位、增建"
-          >
-
-          <div class="remark-panel">
-            <div class="remark-panel__section">
-              <p class="remark-panel__label">
-                搜尋結果
-              </p>
-              <div class="candidate-list candidate-list--remark">
-                <label
-                  v-for="candidate in remarkCandidates"
-                  :key="candidate.value"
-                  class="candidate-list__item"
-                >
-                  <input
-                    :checked="pendingRemarkSelections.includes(candidate.value)"
-                    type="checkbox"
-                    @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
-                  >
-                  <span>{{ candidate.value }}</span>
-                </label>
-                <p
-                  v-if="filters.remarkKeyword && remarkCandidates.length === 0"
-                  class="candidate-list__empty"
-                >
-                  沒有符合的備註候選值。
-                </p>
-                <p
-                  v-else-if="!filters.remarkKeyword"
-                  class="candidate-list__empty"
-                >
-                  輸入關鍵字後顯示候選備註。
-                </p>
+            <div class="search-block__header">
+              <div>
+                <h3>備註排除</h3>
+                <p>用關鍵字找出特殊交易、親友交易等備註後加入排除集合。</p>
               </div>
-            </div>
-
-            <div class="remark-panel__section">
-              <p class="remark-panel__label">
-                已排除（{{ filters.selectedRemarkExclusions.length }}）
-              </p>
-              <div class="chips chips--remark">
+              <div class="search-block__actions">
                 <button
-                  v-for="remark in filters.selectedRemarkExclusions"
-                  :key="remark"
                   type="button"
-                  class="chip chip--muted"
-                  @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
+                  class="button button--ghost"
+                  @click="addAllRemarkCandidates"
                 >
-                  {{ remark }} ×
+                  全選候選
                 </button>
-                <p
-                  v-if="filters.selectedRemarkExclusions.length === 0"
-                  class="candidate-list__empty"
+                <button
+                  type="button"
+                  class="button"
+                  @click="addRemarkSelections"
                 >
-                  尚未加入排除項目。
-                </p>
+                  加入排除
+                </button>
               </div>
             </div>
-          </div>
+
+            <input
+              v-model="filters.remarkKeyword"
+              class="field__control"
+              placeholder="例如：親友、關係人、車位、增建"
+            >
+
+            <div class="remark-panel">
+              <div class="remark-panel__section">
+                <p class="remark-panel__label">
+                  搜尋結果
+                </p>
+                <div class="candidate-list candidate-list--remark">
+                  <label
+                    v-for="candidate in remarkCandidates"
+                    :key="candidate.value"
+                    class="candidate-list__item"
+                  >
+                    <input
+                      :checked="pendingRemarkSelections.includes(candidate.value)"
+                      type="checkbox"
+                      @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
+                    >
+                    <span>{{ candidate.value }}</span>
+                  </label>
+                  <p
+                    v-if="filters.remarkKeyword && remarkCandidates.length === 0"
+                    class="candidate-list__empty"
+                  >
+                    沒有符合的備註候選值。
+                  </p>
+                  <p
+                    v-else-if="!filters.remarkKeyword"
+                    class="candidate-list__empty"
+                  >
+                    輸入關鍵字後顯示候選備註。
+                  </p>
+                </div>
+              </div>
+
+              <div class="remark-panel__section">
+                <p class="remark-panel__label">
+                  已排除（{{ filters.selectedRemarkExclusions.length }}）
+                </p>
+                <div class="chips chips--remark">
+                  <button
+                    v-for="remark in filters.selectedRemarkExclusions"
+                    :key="remark"
+                    type="button"
+                    class="chip chip--muted"
+                    @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
+                  >
+                    {{ remark }} ×
+                  </button>
+                  <p
+                    v-if="filters.selectedRemarkExclusions.length === 0"
+                    class="candidate-list__empty"
+                  >
+                    尚未加入排除項目。
+                  </p>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </div>

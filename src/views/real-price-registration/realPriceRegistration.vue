@@ -722,38 +722,60 @@ onMounted(() => {
             placeholder="例如：親友、關係人、車位、增建"
           >
 
-          <div class="search-block__scroll">
-            <div class="candidate-list">
-              <label
-                v-for="candidate in remarkCandidates"
-                :key="candidate.value"
-                class="candidate-list__item"
-              >
-                <input
-                  :checked="pendingRemarkSelections.includes(candidate.value)"
-                  type="checkbox"
-                  @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
-                >
-                <span>{{ candidate.value }}</span>
-              </label>
-              <p
-                v-if="filters.remarkKeyword && remarkCandidates.length === 0"
-                class="candidate-list__empty"
-              >
-                沒有符合的備註候選值。
+          <div class="remark-panel">
+            <div class="remark-panel__section">
+              <p class="remark-panel__label">
+                搜尋結果
               </p>
+              <div class="candidate-list candidate-list--remark">
+                <label
+                  v-for="candidate in remarkCandidates"
+                  :key="candidate.value"
+                  class="candidate-list__item"
+                >
+                  <input
+                    :checked="pendingRemarkSelections.includes(candidate.value)"
+                    type="checkbox"
+                    @change="togglePendingSelection(pendingRemarkSelections, candidate.value)"
+                  >
+                  <span>{{ candidate.value }}</span>
+                </label>
+                <p
+                  v-if="filters.remarkKeyword && remarkCandidates.length === 0"
+                  class="candidate-list__empty"
+                >
+                  沒有符合的備註候選值。
+                </p>
+                <p
+                  v-else-if="!filters.remarkKeyword"
+                  class="candidate-list__empty"
+                >
+                  輸入關鍵字後顯示候選備註。
+                </p>
+              </div>
             </div>
 
-            <div class="chips">
-              <button
-                v-for="remark in filters.selectedRemarkExclusions"
-                :key="remark"
-                type="button"
-                class="chip chip--muted"
-                @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
-              >
-                {{ remark }} ×
-              </button>
+            <div class="remark-panel__section">
+              <p class="remark-panel__label">
+                已排除（{{ filters.selectedRemarkExclusions.length }}）
+              </p>
+              <div class="chips chips--remark">
+                <button
+                  v-for="remark in filters.selectedRemarkExclusions"
+                  :key="remark"
+                  type="button"
+                  class="chip chip--muted"
+                  @click="removeSelectedItem(filters.selectedRemarkExclusions, remark)"
+                >
+                  {{ remark }} ×
+                </button>
+                <p
+                  v-if="filters.selectedRemarkExclusions.length === 0"
+                  class="candidate-list__empty"
+                >
+                  尚未加入排除項目。
+                </p>
+              </div>
             </div>
           </div>
           </section>
@@ -1412,26 +1434,38 @@ onMounted(() => {
   overflow: auto;
 }
 
-/* 備註排除：候選＋已選一併限制高度，過多時在區塊內捲動 */
-.search-block__scroll {
-  max-height: 18rem;
+/* 備註排除：搜尋結果與已排除分開，各自獨立高度與捲動，避免疊在一起 */
+.remark-panel {
+  display: grid;
+  gap: 0.85rem;
   margin-top: 0.75rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 0.2rem;
 }
 
-.search-block__scroll .candidate-list {
-  max-height: none;
+.remark-panel__section {
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.remark-panel__label {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+.candidate-list--remark {
+  max-height: 10rem;
   margin-top: 0;
-  overflow: visible;
 }
 
-.search-block__scroll .chips {
-  position: sticky;
-  bottom: 0;
-  padding-top: 0.65rem;
-  background: linear-gradient(180deg, transparent, rgba(247, 244, 239, 0.95) 28%);
+.chips--remark {
+  max-height: 8rem;
+  margin-top: 0;
+  overflow-y: auto;
+  align-content: flex-start;
 }
 
 .candidate-list__item {

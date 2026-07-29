@@ -69,7 +69,11 @@ src/
 - 檔案來源說明：[lvr.land.moi.gov.tw](https://lvr.land.moi.gov.tw/)（人工匯出，非本專案自動抓取）
 - **本地預設（建議）**：`public/data/real-price-registration/transactions.json`（由 CSV 事先轉好）
 - **本地 CSV 樣板／下載**：`public/data/real-price-registration/士林區實價登錄.csv`
-- **上傳 CSV**：標題必須與契約一致（正規化後比對）；成功才改用上傳資料
+- **上傳 CSV**：
+  - 檔名可任意（不必與 `士林區實價登錄.csv` 相同）
+  - 必須是 `.csv`
+  - 內容標題必須與本地範本一致（正規化後比對 18 欄；允許引號內換行如 `單價(萬元/坪)`）
+  - 成功才改用上傳資料；失敗彈窗「不符合格式」，分析維持本地
 - **下載**：固定下載本地預設 CSV（不是上傳檔）
 - 格式不符：彈窗「不符合格式」，分析繼續用本地資料
 - **不做** Open Data／GitHub Actions 自動更新（細節見 `real-price-registration-data`）

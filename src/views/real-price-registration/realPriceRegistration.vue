@@ -20,6 +20,7 @@ import {
   getRoadCandidates,
 } from './realPriceRegistration.service'
 import {
+  assertCsvUploadFile,
   buildFilterOptionsFromTransactions,
   LOCAL_CSV_FILENAME,
   parseCsvText,
@@ -286,9 +287,10 @@ function openFilePicker() {
  * @description 處理上傳 CSV：成功則切換 active；失敗則彈窗並維持／還原本地資料
  *
  * 規則：
- * 1. 讀取檔案文字後走 parseCsvText（標題契約）
- * 2. 成功：applyActiveDataset(上傳資料, 檔名)
- * 3. 失敗：顯示「不符合格式」；若目前不是本地來源，還原 localTransactions
+ * 1. 檔名可任意，但副檔名必須是 `.csv`
+ * 2. 內容標題須與本地範本一致（REQUIRED_HEADERS；允許引號內換行）
+ * 3. 通過後 parseCsvText → applyActiveDataset(上傳資料, 檔名)
+ * 4. 失敗：顯示「不符合格式」；若目前不是本地來源，還原 localTransactions
  */
 async function onCsvSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -297,6 +299,7 @@ async function onCsvSelected(event: Event) {
   if (!file) return
 
   try {
+    assertCsvUploadFile(file)
     const text = await file.text()
     const nextTransactions = parseCsvText(text)
     applyActiveDataset(nextTransactions, file.name)
@@ -1150,7 +1153,7 @@ onMounted(() => {
           不符合格式
         </h2>
         <p class="modal__body">
-          請使用與本地預設檔相同標題的 CSV，分析將繼續使用本地資料。
+          請上傳 CSV 檔（檔名可不同）。內容欄位標題需與本地下載範本相同：地段位置或門牌、社區簡稱、交易日期…等 18 欄。分析將繼續使用本地資料。
         </p>
         <button
           type="button"

@@ -31,12 +31,33 @@ export const REQUIRED_HEADERS = [
 export const LOCAL_CSV_FILENAME = '士林區實價登錄.csv'
 
 /**
- * @description CSV 標題不符或解析後無有效列時拋出，供 UI 顯示「不符合格式」
+ * @description CSV 標題不符、非 CSV 副檔名、或解析後無有效列時拋出，供 UI 顯示「不符合格式」
  */
 export class CsvFormatError extends Error {
   constructor(message = '不符合格式') {
     super(message)
     this.name = 'CsvFormatError'
+  }
+}
+
+/**
+ * @description 判斷檔名是否為 CSV（只看副檔名；主檔名可任意，不必與本地預設檔同名）
+ *
+ * 規則：
+ * 1. 副檔名必須是 `.csv`（不分大小寫）
+ * 2. 檔名本體不檢查，例如 `北投區.csv`、`export.csv` 皆可
+ */
+export function isCsvFileName(fileName: string) {
+  return /\.csv$/i.test(String(fileName || '').trim())
+}
+
+/**
+ * @description 上傳前檢查：必須是 CSV 檔（檔名不需與本地相同）
+ * @throws {CsvFormatError} 副檔名不是 .csv
+ */
+export function assertCsvUploadFile(file: File) {
+  if (!isCsvFileName(file.name)) {
+    throw new CsvFormatError()
   }
 }
 
@@ -241,8 +262,10 @@ function mapRow(row: Record<string, string>, index: number): RealPriceTransactio
  *
  * 規則：
  * 1. 先用 papaparse 讀表頭與資料列
- * 2. 表頭須通過 validateHeaders，否則拋 CsvFormatError
+ * 2. 表頭正規化後須與 REQUIRED_HEADERS 一致（對齊本地「士林區實價登錄.csv」標題；
+ *    允許引號內換行，如「單價(萬元/坪)」）
  * 3. 無法映射的列略過；若最後有效列為 0 也拋 CsvFormatError
+ * 4. 不檢查檔名是否與本地預設檔相同
  *
  * @throws {CsvFormatError} 標題不符或沒有任何有效交易列
  */

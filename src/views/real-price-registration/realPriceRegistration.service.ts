@@ -40,6 +40,9 @@ export function createInitialFilters(): RealPriceFilters {
     maxTotalPrice: '',
     minUnitPrice: '',
     maxUnitPrice: '',
+    minFloor: '',
+    maxFloor: '',
+    floorFilterOnlyWithoutElevator: true,
     parking: 'all',
     management: 'all',
   }
@@ -104,6 +107,93 @@ function normalizeMainUse(value: string) {
   return trimmed || '未提供'
 }
 
+const CHINESE_DIGIT: Record<string, number> = {
+  零: 0,
+  〇: 0,
+  一: 1,
+  二: 2,
+  兩: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+}
+
+/**
+ * @description 解析中文或阿拉伯數字層數字串（不含「層」字）
+ *
+ * 規則：
+ * 1. 純阿拉伯數字 → Number
+ * 2. 「十」→ 10；「十一」→ 11；「二十」「二十一」→ 20／21
+ * 3. 單一中文數字 → 對應值；無法辨識 → null
+ */
+function parseChineseOrArabicNumber(text: string) {
+  const cleaned = text.trim()
+  if (!cleaned) return null
+  if (/^\d+$/.test(cleaned)) return Number(cleaned)
+
+  if (cleaned === '十') return 10
+  if (cleaned.startsWith('十')) {
+    const ones = CHINESE_DIGIT[cleaned.slice(1)]
+    return ones == null ? null : 10 + ones
+  }
+  if (cleaned.includes('十')) {
+    const [tensPart, onesPart = ''] = cleaned.split('十')
+    const tens = tensPart === '' ? 1 : CHINESE_DIGIT[tensPart]
+    if (tens == null) return null
+    if (!onesPart) return tens * 10
+    const ones = CHINESE_DIGIT[onesPart]
+    return ones == null ? null : tens * 10 + ones
+  }
+
+  return CHINESE_DIGIT[cleaned] ?? null
+}
+
+/**
+ * @description 自「樓別/樓高」解析所在樓層數字
+ *
+ * 規則：
+ * 1. 取「／」或「/」前段（所在層），不使用總樓高
+ * 2. 去掉「層」「樓」後解析中文／阿拉伯數字
+ * 3. 「全」「整棟」、空白或無法辨識 → null
+ */
+export function parseFloorLevel(floorInfo: string) {
+  const raw = String(floorInfo || '').trim()
+  if (!raw) return null
+  const left = raw.split(/[/／]/)[0]?.trim() || ''
+  const cleaned = left.replace(/[層楼樓]/g, '').trim()
+  if (!cleaned || cleaned === '全' || cleaned === '整棟') return null
+  return parseChineseOrArabicNumber(cleaned)
+}
+
+/**
+ * @description 判斷是否通過樓層篩選
+ *
+ * 規則：
+ * 1. 最低／最高皆空 → 通過
+ * 2. `floorFilterOnlyWithoutElevator` 且 `電梯 = 有` → 通過（華廈／大樓不受樓層限制）
+ * 3. 樓層解析不到 → 通過（保留資料）
+ * 4. 其餘：所在層須落在 min～max（含；空白端不設限）
+ */
+function matchesFloorFilter(row: RealPriceTransaction, filters: RealPriceFilters) {
+  const min = toNumber(filters.minFloor)
+  const max = toNumber(filters.maxFloor)
+  if (min == null && max == null) return true
+
+  if (filters.floorFilterOnlyWithoutElevator && row.hasElevator === '有') {
+    return true
+  }
+
+  const floor = parseFloorLevel(row.floorInfo)
+  if (floor == null) return true
+  if (min != null && floor < min) return false
+  if (max != null && floor > max) return false
+  return true
+}
+
 /**
  * @description 依目前篩選條件過濾交易列
  *
@@ -112,8 +202,9 @@ function normalizeMainUse(value: string) {
  * 2. 成交年月以 tradeYearMonth 字串比較（YYYY-MM）
  * 3. 備註排除：備註包含任一已選排除字串即剔除
  * 4. 屋齡／面積／總價／單價走區間
- * 5. 有無車位、有無管理組織：yes／no／all（管理組織對應 CSV「有」「無」）
- * 6. 社區：空白社區名不符任何已選社區
+ * 5. 樓層區間：見 matchesFloorFilter（可僅套用無電梯）
+ * 6. 有無車位、有無管理組織：yes／no／all（管理組織對應 CSV「有」「無」）
+ * 7. 社區：空白社區名不符任何已選社區
  */
 export function filterTransactions(transactions: RealPriceTransaction[], filters: RealPriceFilters) {
   return transactions.filter((row) => {
@@ -145,6 +236,7 @@ export function filterTransactions(transactions: RealPriceTransaction[], filters
     if (!inRange(row.buildingAreaPing, filters.minArea, filters.maxArea)) return false
     if (!inRange(row.totalPriceWan, filters.minTotalPrice, filters.maxTotalPrice)) return false
     if (!inRange(row.unitPriceWanPerPing, filters.minUnitPrice, filters.maxUnitPrice)) return false
+    if (!matchesFloorFilter(row, filters)) return false
 
     if (filters.parking === 'yes' && !row.hasParking) return false
     if (filters.parking === 'no' && row.hasParking) return false

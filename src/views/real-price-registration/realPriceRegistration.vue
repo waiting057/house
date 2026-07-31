@@ -769,6 +769,35 @@ onMounted(() => {
             </div>
           </label>
 
+          <div class="field field--full">
+            <span class="field__label">樓層區間（所在層）</span>
+            <p class="field__hint">
+              例如最高填 3＝3 樓以下。預設只約束無電梯案件（多為公寓）；華廈／大樓有電梯者不受樓層條件影響。
+            </p>
+            <div class="range">
+              <input
+                v-model="filters.minFloor"
+                class="field__control"
+                inputmode="numeric"
+                placeholder="最低"
+              >
+              <span class="range__sep">~</span>
+              <input
+                v-model="filters.maxFloor"
+                class="field__control"
+                inputmode="numeric"
+                placeholder="最高"
+              >
+            </div>
+            <label class="field__check">
+              <input
+                v-model="filters.floorFilterOnlyWithoutElevator"
+                type="checkbox"
+              >
+              <span>樓層條件只套用在「電梯＝無」的案件（華廈／大樓等有電梯一律保留）</span>
+            </label>
+          </div>
+
           <label class="field">
             <span class="field__label">有無車位</span>
             <select
@@ -2037,6 +2066,21 @@ onMounted(() => {
   margin: 0;
   color: var(--color-ink-muted);
   font-size: 0.86rem;
+}
+
+.field__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+  color: var(--color-ink-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.field__check input {
+  margin-top: 0.2rem;
 }
 
 .field__control {

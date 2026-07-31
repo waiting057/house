@@ -113,6 +113,9 @@ export interface FilterOptionsPayload {
  * @property {string} maxTotalPrice 總價（萬元）上限
  * @property {string} minUnitPrice 單價（萬元/坪）下限
  * @property {string} maxUnitPrice 單價（萬元/坪）上限
+ * @property {string} minFloor 所在樓層下限（選填）
+ * @property {string} maxFloor 所在樓層上限（選填；例如 3＝3 樓以下）
+ * @property {boolean} floorFilterOnlyWithoutElevator 為 true 時樓層條件只套用電梯≠有的案件（預設 true）
  * @property {'all' | 'yes' | 'no'} parking 有無車位：不限／有／無
  * @property {'all' | 'yes' | 'no'} management 有無管理組織：不限／有／無（對應 CSV「有」「無」）
  */
@@ -136,6 +139,9 @@ export interface RealPriceFilters {
   maxTotalPrice: string
   minUnitPrice: string
   maxUnitPrice: string
+  minFloor: string
+  maxFloor: string
+  floorFilterOnlyWithoutElevator: boolean
   parking: 'all' | 'yes' | 'no'
   management: 'all' | 'yes' | 'no'
 }

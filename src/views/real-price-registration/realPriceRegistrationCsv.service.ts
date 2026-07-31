@@ -313,6 +313,7 @@ export function buildFilterOptionsFromTransactions(
       }),
     ),
     roadNames: unique(transactions.map((row) => row.roadName)),
+    communityNames: unique(transactions.map((row) => row.communityName.trim()).filter(Boolean)),
     remarkValues: unique(transactions.map((row) => row.remark)),
   }
 }

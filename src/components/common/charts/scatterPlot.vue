@@ -5,7 +5,8 @@ import type { ScatterPoint } from '@/views/real-price-registration/realPriceRegi
 /**
  * @description 成交散點圖 props
  * @property {string} title 圖卡標題
- * @property {ScatterPoint[]} points 單筆成交點（已依時間排序）
+ * @property {ScatterPoint[]} points 單筆成交點（已依時間排序；可含 pinned）
+ * @property {ScatterPoint[]} [referencePoints] 本案假設點（樣式與成交點區分）
  * @property {string} unitLabel 右上角 Y 軸單位文字（亦用於 hover 價錢提示）
  * @property {string} [xAxisLabel] 底部 X 軸名稱（預設「成交年月」）
  * @property {string} [emptyText] 無資料時提示
@@ -14,46 +15,50 @@ const props = withDefaults(
   defineProps<{
     title: string
     points: ScatterPoint[]
+    referencePoints?: ScatterPoint[]
     unitLabel: string
     xAxisLabel?: string
     emptyText?: string
   }>(),
   {
+    referencePoints: () => [],
     xAxisLabel: '成交年月',
     emptyText: '目前沒有符合條件的資料。',
   },
 )
 
 /**
- * @description 目前滑鼠懸停的點與相對繪圖區的提示位置（資料量大時用 hover 顯示價錢，不在每個點上常駐標籤）
- * @property {ScatterPoint} point 懸停中的成交點
+ * @description 目前滑鼠懸停的點與相對繪圖區的提示位置
+ * @property {ScatterPoint} point 懸停中的點
  * @property {number} x 提示框相對 plot-wrap 的 left（px）
  * @property {number} y 提示框相對 plot-wrap 的 top（px）
  */
 const tooltip = ref<{ point: ScatterPoint; x: number; y: number } | null>(null)
 
+const allPoints = computed(() => [...props.points, ...props.referencePoints])
+
 // 點很多時加寬繪圖區；上限避免無限變寬，下限確保稀疏資料仍可讀
-const width = computed(() => Math.max(960, Math.min(1800, props.points.length * 18)))
+const width = computed(() => Math.max(960, Math.min(1800, Math.max(props.points.length, 1) * 18)))
 const height = 300
 const padding = { top: 22, right: 24, bottom: 56, left: 44 }
 
 /**
- * @description X 軸時間範圍；僅一筆時把 max 往後推 1ms，避免除以零
+ * @description X 軸時間範圍（含本案假設點）；僅一筆時把 max 往後推 1ms，避免除以零
  */
 const xBounds = computed(() => {
-  if (props.points.length === 0) return null
-  const min = Math.min(...props.points.map((point) => point.xValue))
-  const max = Math.max(...props.points.map((point) => point.xValue))
+  if (allPoints.value.length === 0) return null
+  const min = Math.min(...allPoints.value.map((point) => point.xValue))
+  const max = Math.max(...allPoints.value.map((point) => point.xValue))
   return { min, max: max === min ? min + 1 : max }
 })
 
 /**
- * @description Y 軸數值範圍，上下各留約 12% 邊距
+ * @description Y 軸數值範圍（含本案假設點），上下各留約 12% 邊距
  */
 const yBounds = computed(() => {
-  if (props.points.length === 0) return null
-  const min = Math.min(...props.points.map((point) => point.yValue))
-  const max = Math.max(...props.points.map((point) => point.yValue))
+  if (allPoints.value.length === 0) return null
+  const min = Math.min(...allPoints.value.map((point) => point.yValue))
+  const max = Math.max(...allPoints.value.map((point) => point.yValue))
   const span = max - min || 1
   return {
     min: Math.max(0, min - span * 0.12),
@@ -91,14 +96,17 @@ function formatPrice(value: number) {
 }
 
 /**
- * @description 懸停時顯示的價錢主文案，例如「39.59 萬元 / 坪」
+ * @description 懸停時顯示的價錢主文案；本案假設點只顯示 meta 主軸由模板處理
  */
 function priceText(point: ScatterPoint) {
+  if (point.kind === 'reference') {
+    return formatPrice(point.yValue)
+  }
   return `${formatPrice(point.yValue)} ${props.unitLabel}`
 }
 
 /**
- * @description 顯示懸停提示；座標以 plot-wrap 為基準，方便在橫向捲動時仍對準點位
+ * @description 顯示懸停提示；座標以 plot-wrap 為基準
  */
 function showTooltip(event: MouseEvent, point: ScatterPoint) {
   const wrap = (event.currentTarget as SVGElement).closest('.scatter-card__plot-wrap') as HTMLElement | null
@@ -161,14 +169,14 @@ const yTicks = computed(() => {
           {{ title }}
         </h3>
         <p class="scatter-card__hint">
-          每個點代表一筆成交；滑鼠移到點上可看價錢與地址。資料量大時以懸停提示為主，避免所有點同時標價造成重疊。
+          每個點代表一筆成交；菱形為本案假設點。滑鼠移到點上可看價錢與地址。已釘選可比會以較深描邊標示。
         </p>
       </div>
       <span class="scatter-card__unit">{{ unitLabel }}</span>
     </div>
 
     <div
-      v-if="points.length === 0 || !xBounds || !yBounds"
+      v-if="allPoints.length === 0 || !xBounds || !yBounds"
       class="scatter-card__empty"
     >
       {{ emptyText }}
@@ -215,7 +223,6 @@ const yTicks = computed(() => {
             @mouseenter="showTooltip($event, point)"
             @mouseleave="hideTooltip"
           >
-            <!-- 透明擴大命中區，點密集時較容易指到 -->
             <circle
               :cx="xPosition(point.xValue)"
               :cy="yPosition(point.yValue)"
@@ -227,7 +234,35 @@ const yTicks = computed(() => {
               :cy="yPosition(point.yValue)"
               r="4"
               class="scatter-card__dot"
-              :class="{ 'scatter-card__dot--active': tooltip?.point.id === point.id }"
+              :class="{
+                'scatter-card__dot--active': tooltip?.point.id === point.id,
+                'scatter-card__dot--pinned': point.pinned,
+              }"
+            />
+          </g>
+
+          <g
+            v-for="point in referencePoints"
+            :key="point.id"
+            @mousemove="showTooltip($event, point)"
+            @mouseenter="showTooltip($event, point)"
+            @mouseleave="hideTooltip"
+          >
+            <circle
+              :cx="xPosition(point.xValue)"
+              :cy="yPosition(point.yValue)"
+              r="12"
+              class="scatter-card__hit"
+            />
+            <rect
+              :x="xPosition(point.xValue) - 5"
+              :y="yPosition(point.yValue) - 5"
+              width="10"
+              height="10"
+              class="scatter-card__ref"
+              :class="{ 'scatter-card__ref--active': tooltip?.point.id === point.id }"
+              transform-origin="center"
+              :transform="`rotate(45 ${xPosition(point.xValue)} ${yPosition(point.yValue)})`"
             />
           </g>
 
@@ -259,9 +294,17 @@ const yTicks = computed(() => {
         role="tooltip"
       >
         <p class="scatter-card__tooltip-price">
-          {{ priceText(tooltip.point) }}
+          <template v-if="tooltip.point.kind === 'reference'">
+            {{ tooltip.point.meta }}
+          </template>
+          <template v-else>
+            {{ priceText(tooltip.point) }}
+          </template>
         </p>
-        <p class="scatter-card__tooltip-meta">
+        <p
+          v-if="tooltip.point.kind !== 'reference'"
+          class="scatter-card__tooltip-meta"
+        >
           {{ tooltip.point.meta }}
         </p>
       </div>
@@ -340,9 +383,28 @@ const yTicks = computed(() => {
   pointer-events: none;
 }
 
+.scatter-card__dot--pinned {
+  fill: rgba(15, 118, 110, 0.95);
+  stroke: #0f766e;
+  stroke-width: 2.5;
+}
+
 .scatter-card__dot--active {
   fill: #0f766e;
   stroke: #fff;
+  stroke-width: 2;
+}
+
+.scatter-card__ref {
+  fill: rgba(180, 83, 9, 0.9);
+  stroke: #fff;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.scatter-card__ref--active {
+  fill: #b45309;
+  stroke: #fff7ed;
   stroke-width: 2;
 }
 

@@ -80,6 +80,7 @@ export interface RealPriceTransaction extends RealPriceCsvRow {
  * @property {string[]} buildingTypes 建物型態清單
  * @property {string[]} mainUses 主要用途清單
  * @property {string[]} roadNames 路名清單
+ * @property {string[]} communityNames 社區簡稱清單（非空白去重）
  * @property {string[]} remarkValues 備註完整字串清單
  */
 export interface FilterOptionsPayload {
@@ -87,6 +88,7 @@ export interface FilterOptionsPayload {
   buildingTypes: string[]
   mainUses: string[]
   roadNames: string[]
+  communityNames: string[]
   remarkValues: string[]
 }
 
@@ -98,8 +100,10 @@ export interface FilterOptionsPayload {
  * @property {string[]} buildingTypes 已選建物型態（多選；空＝不限）
  * @property {string[]} mainUses 已選主要用途（多選；空＝不限）
  * @property {string[]} selectedRoadNames 已選路名集合（有值時只保留符合者）
+ * @property {string[]} selectedCommunityNames 已選社區簡稱集合（有值時只保留符合者）
  * @property {string[]} selectedRemarkExclusions 備註排除集合（備註包含任一字串則剔除）
  * @property {string} roadKeyword 路名搜尋關鍵字（用來產生候選，不直接過濾清單）
+ * @property {string} communityKeyword 社區簡稱搜尋關鍵字（用來產生候選，不直接過濾清單）
  * @property {string} remarkKeyword 備註搜尋關鍵字（用來產生排除候選）
  * @property {string} minBuildingAge 屋齡下限
  * @property {string} maxBuildingAge 屋齡上限
@@ -119,8 +123,10 @@ export interface RealPriceFilters {
   buildingTypes: string[]
   mainUses: string[]
   selectedRoadNames: string[]
+  selectedCommunityNames: string[]
   selectedRemarkExclusions: string[]
   roadKeyword: string
+  communityKeyword: string
   remarkKeyword: string
   minBuildingAge: string
   maxBuildingAge: string
@@ -132,6 +138,66 @@ export interface RealPriceFilters {
   maxUnitPrice: string
   parking: 'all' | 'yes' | 'no'
   management: 'all' | 'yes' | 'no'
+}
+
+/**
+ * @description 本案對照輸入（session 記憶體；換資料集時清空）
+ * @property {string} buildingAreaPing 權狀坪數（必填才算單價）
+ * @property {string} mainBuildingPing 主建物坪（選填；僅顯示）
+ * @property {string} listPriceWan 開價（萬元，選填）
+ * @property {string[]} offerPricesWan 出價字串陣列（空值略過）
+ */
+export interface TargetPropertyInput {
+  buildingAreaPing: string
+  mainBuildingPing: string
+  listPriceWan: string
+  offerPricesWan: string[]
+}
+
+/**
+ * @description 可比釘選列（session 記憶體；重整／換資料集清空）
+ * @property {string} transactionId 對應 RealPriceTransaction.id
+ * @property {string} note 使用者短註（可空）
+ */
+export interface PinnedComparable {
+  transactionId: string
+  note: string
+}
+
+/**
+ * @description 單價／總價摘要統計（含分位）
+ * @property {number | null} average 平均
+ * @property {number | null} median 中位數
+ * @property {number | null} p25 第 25 百分位；樣本不足時為 null
+ * @property {number | null} p75 第 75 百分位；樣本不足時為 null
+ * @property {number | null} highest 最高
+ * @property {number | null} lowest 最低
+ * @property {number} count 有效筆數
+ * @property {boolean} hasPercentiles 是否達分位門檻（有效筆數 ≥ 5）
+ */
+export interface PercentileStats {
+  average: number | null
+  median: number | null
+  p25: number | null
+  p75: number | null
+  highest: number | null
+  lowest: number | null
+  count: number
+  hasPercentiles: boolean
+}
+
+/**
+ * @description 本案單一總價列（開價或某一出價）相對篩選後單價分位的結果
+ * @property {string} label 列標籤（開價／出價 n）
+ * @property {number} totalPriceWan 總價（萬元）
+ * @property {number} unitPriceWanPerPing 換算單價（萬元／坪）
+ * @property {'偏買方' | '合理帶' | '偏貴' | null} bandLabel 落點標籤；樣本不足或無分位時為 null
+ */
+export interface TargetPriceRow {
+  label: string
+  totalPriceWan: number
+  unitPriceWanPerPing: number
+  bandLabel: '偏買方' | '合理帶' | '偏貴' | null
 }
 
 /**
@@ -159,12 +225,14 @@ export interface CandidateItem {
 }
 
 /**
- * @description 散點圖單筆成交點
- * @property {string} id 對應交易列 id
+ * @description 散點圖單筆點（成交或本案假設）
+ * @property {string} id 對應交易列 id，或本案假設點識別
  * @property {string} xLabel 成交日期字串（顯示用）
  * @property {number} xValue 成交日時間戳（座標用）
  * @property {number} yValue 單價或總價數值
- * @property {string} meta 滑鼠提示用摘要（日期｜行政區｜地址）
+ * @property {string} meta 滑鼠提示用摘要
+ * @property {boolean} [pinned] 是否為已釘選可比成交點
+ * @property {'deal' | 'reference'} [kind] 點類型；預設 deal；reference＝本案假設點
  */
 export interface ScatterPoint {
   id: string
@@ -172,4 +240,6 @@ export interface ScatterPoint {
   xValue: number
   yValue: number
   meta: string
+  pinned?: boolean
+  kind?: 'deal' | 'reference'
 }

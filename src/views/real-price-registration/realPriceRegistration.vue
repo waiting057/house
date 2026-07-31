@@ -1,23 +1,34 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LineChart from '@/components/common/charts/lineChart.vue'
 import ScatterPlot from '@/components/common/charts/scatterPlot.vue'
 import { useAppStore } from '@/stores'
 import { RealPriceRegistrationDataService } from '@/apis/real-price-registration/realPriceRegistration.service'
 import type {
   FilterOptionsPayload,
+  PinnedComparable,
   RealPriceFilters,
   RealPriceTransaction,
+  TargetPropertyInput,
 } from './realPriceRegistration.models'
 import {
   buildDealCountSeries,
   buildPriceSeries,
+  buildReferenceScatterPoints,
   buildScatterPoints,
+  buildTargetPriceRows,
+  calculatePercentileStats,
+  computePercentDiff,
   createInitialFilters,
+  createInitialTargetProperty,
   filterTransactions,
   formatNumber,
+  getCommunityCandidates,
   getRemarkCandidates,
   getRoadCandidates,
+  markPinnedScatterPoints,
+  PINNED_COMPARABLE_LIMIT,
+  resolveTargetCompareTotalPrice,
 } from './realPriceRegistration.service'
 import {
   assertCsvUploadFile,
@@ -35,6 +46,7 @@ const filterOptions = ref<FilterOptionsPayload>({
   buildingTypes: [],
   mainUses: [],
   roadNames: [],
+  communityNames: [],
   remarkValues: [],
 })
 /** 本地預設 CSV 解析結果；上傳失敗時仍以此為準 */
@@ -46,17 +58,28 @@ const activeSourceLabel = ref(LOCAL_CSV_FILENAME)
 const errorMessage = ref('')
 /** 上傳 CSV 標題／解析失敗時顯示「不符合格式」彈窗 */
 const showFormatErrorModal = ref(false)
+/** 可比超過上限時提示 */
+const showPinLimitModal = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const scatterMetric = ref<'unitPriceWanPerPing' | 'totalPriceWan'>('unitPriceWanPerPing')
 
+/** 本案對照輸入（session；換資料集清空） */
+const targetProperty = reactive<TargetPropertyInput>(createInitialTargetProperty())
+/** 可比釘選（session；重整／換資料集清空） */
+const pinnedComparables = ref<PinnedComparable[]>([])
+
 /** 路名候選區：勾選後尚未加入「已選路名」的暫存 */
 const pendingRoadSelections = ref<string[]>([])
+/** 社區候選區：勾選後尚未加入「已選社區」的暫存 */
+const pendingCommunitySelections = ref<string[]>([])
 /** 備註候選區：勾選後尚未加入「排除集合」的暫存 */
 const pendingRemarkSelections = ref<string[]>([])
 /** 各區塊是否展開（預設全部展開） */
 const sectionStates = reactive({
   filters: true,
   summary: true,
+  target: true,
+  comps: true,
   unitTrend: true,
   totalTrend: true,
   dealCountTrend: true,
@@ -77,6 +100,10 @@ const roadCandidates = computed(() =>
   getRoadCandidates(activeTransactions.value, filters, filters.selectedRoadNames),
 )
 
+const communityCandidates = computed(() =>
+  getCommunityCandidates(activeTransactions.value, filters, filters.selectedCommunityNames),
+)
+
 const remarkCandidates = computed(() =>
   getRemarkCandidates(activeTransactions.value, filters.remarkKeyword, filters.selectedRemarkExclusions),
 )
@@ -84,15 +111,75 @@ const remarkCandidates = computed(() =>
 const unitPriceSeries = computed(() => buildPriceSeries(filteredTransactions.value, 'unitPriceWanPerPing'))
 const totalPriceSeries = computed(() => buildPriceSeries(filteredTransactions.value, 'totalPriceWan'))
 const dealCountSeries = computed(() => buildDealCountSeries(filteredTransactions.value))
-const scatterPoints = computed(() => buildScatterPoints(filteredTransactions.value, scatterMetric.value))
+
+const scatterDealPoints = computed(() =>
+  markPinnedScatterPoints(
+    buildScatterPoints(filteredTransactions.value, scatterMetric.value),
+    pinnedComparables.value,
+  ),
+)
+
+const summary = computed(() => {
+  const rows = filteredTransactions.value
+  return {
+    dealCount: rows.length,
+    unitPrice: calculatePercentileStats(rows.map((row) => row.unitPriceWanPerPing)),
+    totalPrice: calculatePercentileStats(rows.map((row) => row.totalPriceWan)),
+  }
+})
+
+const targetPriceRows = computed(() =>
+  buildTargetPriceRows(targetProperty, summary.value.unitPrice),
+)
+
+const referenceScatterPoints = computed(() =>
+  buildReferenceScatterPoints(targetPriceRows.value, scatterDealPoints.value, scatterMetric.value),
+)
 
 /** 符合條件清單：依西元成交日新到舊 */
 const sortedTransactions = computed(() =>
   [...filteredTransactions.value].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)),
 )
 
+const targetCompareTotalPrice = computed(() => resolveTargetCompareTotalPrice(targetProperty))
+const targetAreaPing = computed(() => {
+  const raw = targetProperty.buildingAreaPing.trim()
+  if (!raw) return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : null
+})
+
 /**
- * @description 切換目前分析資料集：寫入 active、重建 filterOptions，並重設篩選為初始狀態
+ * @description 已釘選可比列（對照 activeTransactions；缺列則略過）
+ */
+const pinnedComparableRows = computed(() => {
+  const byId = new Map(activeTransactions.value.map((row) => [row.id, row]))
+  return pinnedComparables.value
+    .map((pin) => {
+      const row = byId.get(pin.transactionId)
+      if (!row) return null
+      return {
+        pin,
+        row,
+        totalPriceDiffPct: computePercentDiff(row.totalPriceWan, targetCompareTotalPrice.value),
+        areaDiffPct: computePercentDiff(row.buildingAreaPing, targetAreaPing.value),
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => item != null)
+})
+
+const pinnedIdSet = computed(() => new Set(pinnedComparables.value.map((item) => item.transactionId)))
+
+/**
+ * @description 清空本案與可比（換資料集時呼叫）
+ */
+function resetTargetAndPins() {
+  Object.assign(targetProperty, createInitialTargetProperty())
+  pinnedComparables.value = []
+}
+
+/**
+ * @description 切換目前分析資料集：寫入 active、重建 filterOptions，重設篩選／本案／可比
  * @param next 新的交易列
  * @param sourceLabel 來源顯示名稱（本地檔名或上傳檔名）
  */
@@ -101,7 +188,19 @@ function applyActiveDataset(next: RealPriceTransaction[], sourceLabel: string) {
   activeSourceLabel.value = sourceLabel
   filterOptions.value = buildFilterOptionsFromTransactions(next)
   resetFilters()
+  resetTargetAndPins()
 }
+
+/**
+ * @description 若釘選 id 已不在 activeTransactions，自動剔除
+ */
+watch(
+  activeTransactions,
+  (rows) => {
+    const ids = new Set(rows.map((row) => row.id))
+    pinnedComparables.value = pinnedComparables.value.filter((pin) => ids.has(pin.transactionId))
+  },
+)
 
 /**
  * @description 依 CSV 標題取出清單儲存格文字（顯示原始字串，空值用「—」）
@@ -130,42 +229,6 @@ function getCsvCellValue(row: RealPriceTransaction, header: string) {
   const value = map[header]
   return value && value.trim() ? value : '—'
 }
-
-/**
- * @description 計算摘要統計（平均、中位數、最高、最低）；無有效數值時全部為 null
- */
-function calculateStats(values: Array<number | null>) {
-  const numbers = values.filter((value): value is number => value != null).sort((a, b) => a - b)
-  if (numbers.length === 0) {
-    return {
-      average: null,
-      median: null,
-      highest: null,
-      lowest: null,
-    }
-  }
-
-  const average = numbers.reduce((sum, value) => sum + value, 0) / numbers.length
-  const middle = Math.floor(numbers.length / 2)
-  const median =
-    numbers.length % 2 === 0 ? (numbers[middle - 1] + numbers[middle]) / 2 : numbers[middle]
-
-  return {
-    average,
-    median,
-    highest: numbers[numbers.length - 1],
-    lowest: numbers[0],
-  }
-}
-
-const summary = computed(() => {
-  const rows = filteredTransactions.value
-  return {
-    dealCount: rows.length,
-    unitPrice: calculateStats(rows.map((row) => row.unitPriceWanPerPing)),
-    totalPrice: calculateStats(rows.map((row) => row.totalPriceWan)),
-  }
-})
 
 /**
  * @description 在候選暫存陣列中切換某一值的勾選狀態（有則移除、無則加入）
@@ -201,6 +264,27 @@ function addAllRoadCandidates() {
 }
 
 /**
+ * @description 把 pending 社區併入已選社區集合後清空 pending
+ */
+function addCommunitySelections() {
+  for (const value of pendingCommunitySelections.value) {
+    if (!filters.selectedCommunityNames.includes(value)) {
+      filters.selectedCommunityNames.push(value)
+    }
+  }
+  pendingCommunitySelections.value = []
+}
+
+/**
+ * @description 一次把目前社區候選全部加入已選社區
+ */
+function addAllCommunityCandidates() {
+  const values = communityCandidates.value.map((item) => item.value)
+  pendingCommunitySelections.value = values
+  addCommunitySelections()
+}
+
+/**
  * @description 把 pending 備註併入排除集合後清空 pending
  */
 function addRemarkSelections() {
@@ -222,7 +306,7 @@ function addAllRemarkCandidates() {
 }
 
 /**
- * @description 從已選集合移除單一項目（路名或備註排除 chip）
+ * @description 從已選集合移除單一項目（路名／社區／備註排除 chip）
  */
 function removeSelectedItem(collection: string[], value: string) {
   const index = collection.indexOf(value)
@@ -251,12 +335,59 @@ function toggleSection(section: keyof typeof sectionStates) {
 }
 
 /**
- * @description 重設所有篩選與候選 pending 狀態
+ * @description 重設所有篩選與候選 pending 狀態（不含本案／可比）
  */
 function resetFilters() {
   Object.assign(filters, createInitialFilters())
   pendingRoadSelections.value = []
+  pendingCommunitySelections.value = []
   pendingRemarkSelections.value = []
+}
+
+/**
+ * @description 新增一列出價輸入欄
+ */
+function addOfferPriceField() {
+  targetProperty.offerPricesWan.push('')
+}
+
+/**
+ * @description 移除指定出價輸入欄（至少保留 1 欄）
+ */
+function removeOfferPriceField(index: number) {
+  if (targetProperty.offerPricesWan.length <= 1) return
+  targetProperty.offerPricesWan.splice(index, 1)
+}
+
+/**
+ * @description 判斷交易是否已釘選為可比
+ */
+function isPinned(transactionId: string) {
+  return pinnedIdSet.value.has(transactionId)
+}
+
+/**
+ * @description 加入或移除可比；超過上限時顯示提示且不加入
+ */
+function togglePinnedComparable(transactionId: string) {
+  const index = pinnedComparables.value.findIndex((item) => item.transactionId === transactionId)
+  if (index >= 0) {
+    pinnedComparables.value.splice(index, 1)
+    return
+  }
+  if (pinnedComparables.value.length >= PINNED_COMPARABLE_LIMIT) {
+    showPinLimitModal.value = true
+    return
+  }
+  pinnedComparables.value.push({ transactionId, note: '' })
+}
+
+/**
+ * @description 更新某一可比的註記
+ */
+function updatePinnedNote(transactionId: string, note: string) {
+  const pin = pinnedComparables.value.find((item) => item.transactionId === transactionId)
+  if (pin) pin.note = note
 }
 
 /**
@@ -332,6 +463,13 @@ function closeFormatErrorModal() {
   showFormatErrorModal.value = false
 }
 
+/**
+ * @description 關閉可比上限提示
+ */
+function closePinLimitModal() {
+  showPinLimitModal.value = false
+}
+
 onMounted(() => {
   loadData()
 })
@@ -348,7 +486,7 @@ onMounted(() => {
           實價登錄分析
         </h1>
         <p class="page__lead">
-          先以台北市買賣案件做第一版。你可以依行政區、路名、型態、屋齡、坪數、價格與備註排除條件，快速縮小到想看的成交樣本。
+          實價證據引擎：依行政區、路名、社區、型態與價格條件掃描行情，再用本案對照與可比釘選輔助出價判斷。本頁不做自動鑑價或貸款試算。
         </p>
       </div>
       <div class="page__meta">
@@ -393,7 +531,7 @@ onMounted(() => {
             篩選條件
           </h2>
           <p class="panel__hint">
-            路名與備註都支援關鍵字搜尋後分批加入集合。
+            路名、社區與備註都支援關鍵字搜尋後分批加入集合。
           </p>
         </div>
         <button
@@ -695,6 +833,70 @@ onMounted(() => {
           <section class="search-block">
             <div class="search-block__header">
               <div>
+                <h3>社區簡稱多選</h3>
+                <p>輸入關鍵字後，選擇符合的社區加入篩選集合。</p>
+              </div>
+              <div class="search-block__actions">
+                <button
+                  type="button"
+                  class="button button--ghost"
+                  @click="addAllCommunityCandidates"
+                >
+                  全選候選
+                </button>
+                <button
+                  type="button"
+                  class="button"
+                  @click="addCommunitySelections"
+                >
+                  加入已選
+                </button>
+              </div>
+            </div>
+
+            <input
+              v-model="filters.communityKeyword"
+              class="field__control"
+              placeholder="例如：時代大廈、凡爾賽"
+            >
+
+            <div class="candidate-list">
+              <label
+                v-for="candidate in communityCandidates"
+                :key="candidate.value"
+                class="candidate-list__item"
+              >
+                <input
+                  :checked="pendingCommunitySelections.includes(candidate.value)"
+                  type="checkbox"
+                  @change="togglePendingSelection(pendingCommunitySelections, candidate.value)"
+                >
+                <span>{{ candidate.value }}</span>
+              </label>
+              <p
+                v-if="filters.communityKeyword && communityCandidates.length === 0"
+                class="candidate-list__empty"
+              >
+                沒有符合的社區候選值。
+              </p>
+            </div>
+
+            <div class="chips">
+              <button
+                v-for="communityName in filters.selectedCommunityNames"
+                :key="communityName"
+                type="button"
+                class="chip"
+                @click="removeSelectedItem(filters.selectedCommunityNames, communityName)"
+              >
+                {{ communityName }} ×
+              </button>
+            </div>
+          </section>
+
+          <section class="search-block">
+            <div class="search-block__header">
+              <div>
                 <h3>備註排除</h3>
                 <p>用關鍵字找出特殊交易、親友交易等備註後加入排除集合。</p>
               </div>
@@ -790,7 +992,7 @@ onMounted(() => {
             統計摘要
           </h2>
           <p class="panel__hint">
-            彙整目前篩選條件下的成交筆數、單價與總價分布。
+            彙整目前篩選條件下的成交筆數、單價與總價分布。P25／P75 為第 25／75 百分位：約四分之一成交低於 P25、四分之一高於 P75，中間一半大致落在 P25～P75（常見行情帶）。有效樣本少於 5 筆時不顯示分位。
           </p>
         </div>
         <button
@@ -835,6 +1037,18 @@ onMounted(() => {
                 <dd>{{ formatNumber(summary.unitPrice.median, 1) }}</dd>
               </div>
               <div class="summary-card__row">
+                <dt>P25（較低四分位）：</dt>
+                <dd>
+                  {{ summary.unitPrice.hasPercentiles ? formatNumber(summary.unitPrice.p25, 1) : '樣本不足' }}
+                </dd>
+              </div>
+              <div class="summary-card__row">
+                <dt>P75（較高四分位）：</dt>
+                <dd>
+                  {{ summary.unitPrice.hasPercentiles ? formatNumber(summary.unitPrice.p75, 1) : '樣本不足' }}
+                </dd>
+              </div>
+              <div class="summary-card__row">
                 <dt>最高：</dt>
                 <dd>{{ formatNumber(summary.unitPrice.highest, 1) }}</dd>
               </div>
@@ -858,6 +1072,18 @@ onMounted(() => {
                 <dd>{{ formatNumber(summary.totalPrice.median, 0) }}</dd>
               </div>
               <div class="summary-card__row">
+                <dt>P25（較低四分位）：</dt>
+                <dd>
+                  {{ summary.totalPrice.hasPercentiles ? formatNumber(summary.totalPrice.p25, 0) : '樣本不足' }}
+                </dd>
+              </div>
+              <div class="summary-card__row">
+                <dt>P75（較高四分位）：</dt>
+                <dd>
+                  {{ summary.totalPrice.hasPercentiles ? formatNumber(summary.totalPrice.p75, 0) : '樣本不足' }}
+                </dd>
+              </div>
+              <div class="summary-card__row">
                 <dt>最高：</dt>
                 <dd>{{ formatNumber(summary.totalPrice.highest, 0) }}</dd>
               </div>
@@ -868,6 +1094,259 @@ onMounted(() => {
             </dl>
           </article>
         </section>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <h2 class="panel__title">
+            本案對照
+          </h2>
+          <p class="panel__hint">
+            輸入權狀坪與開價／出價，換算單價並對照目前篩選樣本。落點規則：低於 P25（較低四分位）為「偏買方」，落在 P25～P75 為「合理帶」，高於 P75（較高四分位）為「偏貴」。
+          </p>
+        </div>
+        <button
+          type="button"
+          class="button button--ghost button--icon"
+          :aria-expanded="sectionStates.target"
+          aria-label="切換本案對照區塊"
+          @click="toggleSection('target')"
+        >
+          <span
+            class="collapse-icon"
+            :class="{ 'collapse-icon--collapsed': !sectionStates.target }"
+            aria-hidden="true"
+          >⌃</span>
+        </button>
+      </div>
+
+      <div
+        v-if="sectionStates.target"
+        class="panel__content"
+      >
+        <div class="target-grid">
+          <label class="field">
+            <span class="field__label">權狀坪數</span>
+            <input
+              v-model="targetProperty.buildingAreaPing"
+              class="field__control"
+              inputmode="decimal"
+              placeholder="例如：59.15"
+            >
+          </label>
+          <label class="field">
+            <span class="field__label">主建物坪（選填）</span>
+            <input
+              v-model="targetProperty.mainBuildingPing"
+              class="field__control"
+              inputmode="decimal"
+              placeholder="僅顯示，不改行情計算"
+            >
+          </label>
+          <label class="field">
+            <span class="field__label">開價（萬元）</span>
+            <input
+              v-model="targetProperty.listPriceWan"
+              class="field__control"
+              inputmode="decimal"
+              placeholder="選填"
+            >
+          </label>
+        </div>
+
+        <div class="offer-list">
+          <div class="offer-list__header">
+            <h3 class="offer-list__title">
+              出價（萬元）
+            </h3>
+            <button
+              type="button"
+              class="button button--ghost"
+              @click="addOfferPriceField"
+            >
+              新增出價
+            </button>
+          </div>
+          <div
+            v-for="(_, index) in targetProperty.offerPricesWan"
+            :key="`offer-${index}`"
+            class="offer-list__row"
+          >
+            <label class="field field--grow">
+              <span class="field__label">出價 {{ index + 1 }}</span>
+              <input
+                v-model="targetProperty.offerPricesWan[index]"
+                class="field__control"
+                inputmode="decimal"
+                placeholder="不預填"
+              >
+            </label>
+            <button
+              type="button"
+              class="button button--ghost"
+              :disabled="targetProperty.offerPricesWan.length <= 1"
+              @click="removeOfferPriceField(index)"
+            >
+              移除
+            </button>
+          </div>
+        </div>
+
+        <p
+          v-if="!summary.unitPrice.hasPercentiles"
+          class="notice"
+        >
+          目前篩選後有效單價少於 5 筆，分位與落點標籤顯示為樣本不足。
+        </p>
+
+        <div
+          v-if="targetPriceRows.length === 0"
+          class="notice"
+        >
+          請先輸入有效權狀坪，以及開價或至少一檔出價。
+        </div>
+
+        <div
+          v-else
+          class="table-wrap"
+        >
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>總價（萬）</th>
+                <th>單價（萬／坪）</th>
+                <th>相對篩選單價中位</th>
+                <th>落點</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in targetPriceRows"
+                :key="row.label"
+              >
+                <td>{{ row.label }}</td>
+                <td>{{ formatNumber(row.totalPriceWan, 0) }}</td>
+                <td>{{ formatNumber(row.unitPriceWanPerPing, 2) }}</td>
+                <td>
+                  {{
+                    summary.unitPrice.median == null
+                      ? '—'
+                      : formatNumber(row.unitPriceWanPerPing - summary.unitPrice.median, 2)
+                  }}
+                </td>
+                <td>
+                  <span
+                    v-if="row.bandLabel"
+                    class="band"
+                    :class="{
+                      'band--buyer': row.bandLabel === '偏買方',
+                      'band--fair': row.bandLabel === '合理帶',
+                      'band--high': row.bandLabel === '偏貴',
+                    }"
+                  >{{ row.bandLabel }}</span>
+                  <span v-else>樣本不足</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <h2 class="panel__title">
+            可比案例
+          </h2>
+          <p class="panel__hint">
+            從下方清單釘選可比（最多 {{ PINNED_COMPARABLE_LIMIT }} 筆）。總價差／面積差相對「第一個有效出價，否則開價」。
+          </p>
+        </div>
+        <button
+          type="button"
+          class="button button--ghost button--icon"
+          :aria-expanded="sectionStates.comps"
+          aria-label="切換可比案例區塊"
+          @click="toggleSection('comps')"
+        >
+          <span
+            class="collapse-icon"
+            :class="{ 'collapse-icon--collapsed': !sectionStates.comps }"
+            aria-hidden="true"
+          >⌃</span>
+        </button>
+      </div>
+
+      <div
+        v-if="sectionStates.comps"
+        class="panel__content"
+      >
+        <div
+          v-if="pinnedComparableRows.length === 0"
+          class="notice"
+        >
+          尚未釘選可比。請到下方清單按「加入可比」。
+        </div>
+
+        <div
+          v-else
+          class="table-wrap"
+        >
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th>地址</th>
+                <th>社區</th>
+                <th>交易日期</th>
+                <th>坪數</th>
+                <th>總價</th>
+                <th>單價</th>
+                <th>車位</th>
+                <th>總價差％</th>
+                <th>面積差％</th>
+                <th>註記</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in pinnedComparableRows"
+                :key="item.pin.transactionId"
+              >
+                <td>{{ item.row.fullAddress }}</td>
+                <td>{{ item.row.communityName || '—' }}</td>
+                <td>{{ item.row.tradeDateRaw }}</td>
+                <td>{{ formatNumber(item.row.buildingAreaPing, 2) }}</td>
+                <td>{{ formatNumber(item.row.totalPriceWan, 0) }}</td>
+                <td>{{ formatNumber(item.row.unitPriceWanPerPing, 2) }}</td>
+                <td>{{ item.row.hasParking ? '有' : '無' }}</td>
+                <td>{{ item.totalPriceDiffPct == null ? '—' : `${formatNumber(item.totalPriceDiffPct, 1)}%` }}</td>
+                <td>{{ item.areaDiffPct == null ? '—' : `${formatNumber(item.areaDiffPct, 1)}%` }}</td>
+                <td>
+                  <input
+                    class="field__control field__control--inline"
+                    :value="item.pin.note"
+                    placeholder="短註"
+                    @input="updatePinnedNote(item.pin.transactionId, ($event.target as HTMLInputElement).value)"
+                  >
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="button button--ghost button--small"
+                    @click="togglePinnedComparable(item.pin.transactionId)"
+                  >
+                    移除可比
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -1046,7 +1525,8 @@ onMounted(() => {
         <div class="chart-scroll">
           <ScatterPlot
             :title="scatterMetric === 'unitPriceWanPerPing' ? '單價分布' : '總價分布'"
-            :points="scatterPoints"
+            :points="scatterDealPoints"
+            :reference-points="referenceScatterPoints"
             :unit-label="scatterMetric === 'unitPriceWanPerPing' ? '萬元 / 坪' : '萬元'"
             x-axis-label="成交年月"
           />
@@ -1080,7 +1560,7 @@ onMounted(() => {
         class="panel__content"
       >
         <p class="note">
-          實價登錄會混入特殊高價案、親友或關係人交易、僅車位交易、附帶增建等樣本，平均數很容易被極端值拉動。中位數較不受少數異常案件影響，因此更適合用來觀察特定區域的行情變化；平均數則保留為輔助觀察線。
+          本頁是實價證據工具，不是自動鑑價或貸款試算。實價登錄會混入特殊高價案、親友或關係人交易、僅車位交易、附帶增建等樣本，平均數很容易被極端值拉動。中位數較不受極端值影響；P25／P75 是第 25／75 百分位，用來標出常見行情帶（約一半成交落在兩者之間）。本案對照與可比釘選用來整理出價依據。
         </p>
       </div>
     </section>
@@ -1128,6 +1608,7 @@ onMounted(() => {
           <table class="table">
             <thead>
               <tr>
+                <th>操作</th>
                 <th
                   v-for="column in listColumns"
                   :key="column.key"
@@ -1140,7 +1621,17 @@ onMounted(() => {
               <tr
                 v-for="row in sortedTransactions"
                 :key="row.id"
+                :class="{ 'table__row--pinned': isPinned(row.id) }"
               >
+                <td>
+                  <button
+                    type="button"
+                    class="button button--ghost button--small"
+                    @click="togglePinnedComparable(row.id)"
+                  >
+                    {{ isPinned(row.id) ? '移除可比' : '加入可比' }}
+                  </button>
+                </td>
                 <td
                   v-for="column in listColumns"
                   :key="`${row.id}-${column.key}`"
@@ -1153,6 +1644,39 @@ onMounted(() => {
         </div>
       </div>
     </section>
+
+    <div
+      v-if="showPinLimitModal"
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pin-limit-title"
+    >
+      <button
+        type="button"
+        class="modal__backdrop"
+        aria-label="關閉可比上限提示"
+        @click="closePinLimitModal"
+      />
+      <div class="modal__panel">
+        <h2
+          id="pin-limit-title"
+          class="modal__title"
+        >
+          可比已達上限
+        </h2>
+        <p class="modal__body">
+          最多只能釘選 {{ PINNED_COMPARABLE_LIMIT }} 筆可比案例。請先移除部分可比後再加入。
+        </p>
+        <button
+          type="button"
+          class="button"
+          @click="closePinLimitModal"
+        >
+          關閉
+        </button>
+      </div>
+    </div>
 
     <div
       v-if="showFormatErrorModal"
@@ -1676,13 +2200,92 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.table--compact {
+  min-width: 48rem;
+}
+
+.table__row--pinned {
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.offer-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.offer-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.offer-list__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.offer-list__row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.field--grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.field__control--inline {
+  min-width: 8rem;
+  width: 100%;
+}
+
+.button--small {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.band {
+  display: inline-flex;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.band--buyer {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
+.band--fair {
+  background: rgba(180, 83, 9, 0.12);
+  color: #b45309;
+}
+
+.band--high {
+  background: rgba(185, 28, 28, 0.12);
+  color: #b91c1c;
+}
+
 @media (max-width: 1200px) {
   .page__hero,
   .search-block__header {
     flex-direction: column;
   }
 
-  .filters-grid {
+  .filters-grid,
+  .target-grid {
     grid-template-columns: 1fr;
   }
 

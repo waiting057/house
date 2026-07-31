@@ -132,6 +132,47 @@ const targetPriceRows = computed(() =>
   buildTargetPriceRows(targetProperty, summary.value.unitPrice),
 )
 
+/**
+ * @description 本案落點水位尺資料；樣本不足或尚無出價列時為 null
+ *
+ * 規則：
+ * 1. 需有單價 P25／P75 且至少一列有效本案總價
+ * 2. 尺度含 P25／P75 與所有本案單價，上下各留約 12% 邊距（至少 1）
+ * 3. pct 由下往上 0～100，供絕對定位標記
+ */
+const bandThermometer = computed(() => {
+  const stats = summary.value.unitPrice
+  const rows = targetPriceRows.value
+  if (!stats.hasPercentiles || stats.p25 == null || stats.p75 == null || rows.length === 0) {
+    return null
+  }
+
+  const p25 = stats.p25
+  const p75 = stats.p75
+  const values = rows.map((row) => row.unitPriceWanPerPing)
+  const rawMin = Math.min(p25, ...values)
+  const rawMax = Math.max(p75, ...values)
+  const pad = Math.max((rawMax - rawMin) * 0.12, 1)
+  const scaleMin = rawMin - pad
+  const scaleMax = rawMax + pad
+  const span = scaleMax - scaleMin || 1
+
+  const toPct = (value: number) => ((value - scaleMin) / span) * 100
+
+  return {
+    p25,
+    p75,
+    p25Pct: toPct(p25),
+    p75Pct: toPct(p75),
+    markers: rows.map((row) => ({
+      label: row.label,
+      value: row.unitPriceWanPerPing,
+      pct: toPct(row.unitPriceWanPerPing),
+      bandLabel: row.bandLabel,
+    })),
+  }
+})
+
 const referenceScatterPoints = computed(() =>
   buildReferenceScatterPoints(targetPriceRows.value, scatterDealPoints.value, scatterMetric.value),
 )
@@ -1210,48 +1251,136 @@ onMounted(() => {
 
         <div
           v-else
-          class="table-wrap"
+          class="target-result"
         >
-          <table class="table table--compact">
-            <thead>
-              <tr>
-                <th>項目</th>
-                <th>總價（萬）</th>
-                <th>單價（萬／坪）</th>
-                <th>相對篩選單價中位</th>
-                <th>落點</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in targetPriceRows"
-                :key="row.label"
+          <aside
+            v-if="bandThermometer"
+            class="band-meter"
+            aria-label="落點水位尺（萬元／坪）"
+          >
+            <p class="band-meter__caption">
+              落點水位（萬元／坪）
+            </p>
+            <div class="band-meter__body">
+              <div
+                class="band-meter__rail"
+                aria-hidden="true"
               >
-                <td>{{ row.label }}</td>
-                <td>{{ formatNumber(row.totalPriceWan, 0) }}</td>
-                <td>{{ formatNumber(row.unitPriceWanPerPing, 2) }}</td>
-                <td>
-                  {{
-                    summary.unitPrice.median == null
-                      ? '—'
-                      : formatNumber(row.unitPriceWanPerPing - summary.unitPrice.median, 2)
-                  }}
-                </td>
-                <td>
-                  <span
-                    v-if="row.bandLabel"
-                    class="band"
-                    :class="{
-                      'band--buyer': row.bandLabel === '偏買方',
-                      'band--fair': row.bandLabel === '合理帶',
-                      'band--high': row.bandLabel === '偏貴',
-                    }"
-                  >{{ row.bandLabel }}</span>
-                  <span v-else>樣本不足</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                <div
+                  class="band-meter__zone band-meter__zone--high"
+                  :style="{ height: `${100 - bandThermometer.p75Pct}%` }"
+                />
+                <div
+                  class="band-meter__zone band-meter__zone--fair"
+                  :style="{ height: `${bandThermometer.p75Pct - bandThermometer.p25Pct}%` }"
+                />
+                <div
+                  class="band-meter__zone band-meter__zone--buyer"
+                  :style="{ height: `${bandThermometer.p25Pct}%` }"
+                />
+              </div>
+
+              <div class="band-meter__scale">
+                <div
+                  class="band-meter__band-label band-meter__band-label--high"
+                  :style="{ bottom: `${(100 + bandThermometer.p75Pct) / 2}%` }"
+                >
+                  偏貴
+                </div>
+                <div
+                  class="band-meter__threshold"
+                  :style="{ bottom: `${bandThermometer.p75Pct}%` }"
+                >
+                  <span class="band-meter__threshold-line" />
+                  <span class="band-meter__threshold-text">
+                    P75：{{ formatNumber(bandThermometer.p75, 2) }}
+                  </span>
+                </div>
+                <div
+                  class="band-meter__band-label band-meter__band-label--fair"
+                  :style="{ bottom: `${(bandThermometer.p25Pct + bandThermometer.p75Pct) / 2}%` }"
+                >
+                  合理帶
+                </div>
+                <div
+                  class="band-meter__threshold"
+                  :style="{ bottom: `${bandThermometer.p25Pct}%` }"
+                >
+                  <span class="band-meter__threshold-line" />
+                  <span class="band-meter__threshold-text">
+                    P25：{{ formatNumber(bandThermometer.p25, 2) }}
+                  </span>
+                </div>
+                <div
+                  class="band-meter__band-label band-meter__band-label--buyer"
+                  :style="{ bottom: `${bandThermometer.p25Pct / 2}%` }"
+                >
+                  偏買方
+                </div>
+
+                <div
+                  v-for="marker in bandThermometer.markers"
+                  :key="marker.label"
+                  class="band-meter__marker"
+                  :class="{
+                    'band-meter__marker--buyer': marker.bandLabel === '偏買方',
+                    'band-meter__marker--fair': marker.bandLabel === '合理帶',
+                    'band-meter__marker--high': marker.bandLabel === '偏貴',
+                  }"
+                  :style="{ bottom: `${marker.pct}%` }"
+                  :title="`${marker.label}：${formatNumber(marker.value, 2)} 萬／坪`"
+                >
+                  <span class="band-meter__marker-dot" />
+                  <span class="band-meter__marker-label">
+                    {{ marker.label }} {{ formatNumber(marker.value, 2) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <div class="table-wrap">
+            <table class="table table--compact">
+              <thead>
+                <tr>
+                  <th>項目</th>
+                  <th>總價（萬）</th>
+                  <th>單價（萬／坪）</th>
+                  <th>相對篩選單價中位</th>
+                  <th>落點</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in targetPriceRows"
+                  :key="row.label"
+                >
+                  <td>{{ row.label }}</td>
+                  <td>{{ formatNumber(row.totalPriceWan, 0) }}</td>
+                  <td>{{ formatNumber(row.unitPriceWanPerPing, 2) }}</td>
+                  <td>
+                    {{
+                      summary.unitPrice.median == null
+                        ? '—'
+                        : formatNumber(row.unitPriceWanPerPing - summary.unitPrice.median, 2)
+                    }}
+                  </td>
+                  <td>
+                    <span
+                      v-if="row.bandLabel"
+                      class="band"
+                      :class="{
+                        'band--buyer': row.bandLabel === '偏買方',
+                        'band--fair': row.bandLabel === '合理帶',
+                        'band--high': row.bandLabel === '偏貴',
+                      }"
+                    >{{ row.bandLabel }}</span>
+                    <span v-else>樣本不足</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -1302,6 +1431,7 @@ onMounted(() => {
                 <th>地址</th>
                 <th>社區</th>
                 <th>交易日期</th>
+                <th>型態</th>
                 <th>坪數</th>
                 <th>總價</th>
                 <th>單價</th>
@@ -1320,6 +1450,7 @@ onMounted(() => {
                 <td>{{ item.row.fullAddress }}</td>
                 <td>{{ item.row.communityName || '—' }}</td>
                 <td>{{ item.row.tradeDateRaw }}</td>
+                <td>{{ item.row.buildingType || '—' }}</td>
                 <td>{{ formatNumber(item.row.buildingAreaPing, 2) }}</td>
                 <td>{{ formatNumber(item.row.totalPriceWan, 0) }}</td>
                 <td>{{ formatNumber(item.row.unitPriceWanPerPing, 2) }}</td>
@@ -2215,6 +2346,145 @@ onMounted(() => {
   margin-bottom: 1rem;
 }
 
+.target-result {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.band-meter {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.band-meter__caption {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.band-meter__body {
+  display: grid;
+  grid-template-columns: 0.7rem minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 16rem;
+}
+
+.band-meter__rail {
+  display: flex;
+  flex-direction: column;
+  border-radius: 999px;
+  overflow: hidden;
+  min-height: 16rem;
+}
+
+.band-meter__zone--high {
+  background: rgba(185, 28, 28, 0.55);
+}
+
+.band-meter__zone--fair {
+  background: rgba(180, 83, 9, 0.45);
+}
+
+.band-meter__zone--buyer {
+  background: rgba(15, 118, 110, 0.45);
+}
+
+.band-meter__scale {
+  position: relative;
+  min-height: 16rem;
+}
+
+.band-meter__band-label {
+  position: absolute;
+  left: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transform: translateY(50%);
+}
+
+.band-meter__band-label--high {
+  color: #b91c1c;
+}
+
+.band-meter__band-label--fair {
+  color: #b45309;
+}
+
+.band-meter__band-label--buyer {
+  color: #0f766e;
+}
+
+.band-meter__threshold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  transform: translateY(50%);
+  pointer-events: none;
+}
+
+.band-meter__threshold-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(28, 25, 23, 0.35);
+}
+
+.band-meter__threshold-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+}
+
+.band-meter__marker {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transform: translateY(50%);
+  z-index: 1;
+}
+
+.band-meter__marker-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(28, 25, 23, 0.2);
+  background: #0f766e;
+}
+
+.band-meter__marker--fair .band-meter__marker-dot {
+  background: #b45309;
+}
+
+.band-meter__marker--high .band-meter__marker-dot {
+  background: #b91c1c;
+}
+
+.band-meter__marker-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+
 .offer-list {
   display: grid;
   gap: 0.75rem;
@@ -2285,7 +2555,8 @@ onMounted(() => {
   }
 
   .filters-grid,
-  .target-grid {
+  .target-grid,
+  .target-result {
     grid-template-columns: 1fr;
   }
 
